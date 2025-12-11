@@ -22,7 +22,7 @@ local BotConfig = {
     WaitGame = 2.6, 
 
     -- Cooldown dipercepat (Karena kita hapus animasi)
-    WaitCool = 0.1,
+    WaitCool = 0.01,
     
     CastPower = 1.0
 }
@@ -200,11 +200,11 @@ local function StartBot()
                 for i = 1, 3 do
                     KillAnimations() -- Hapus animasi pamer ikan sebelumnya
                     Remotes.Charge:InvokeServer(workspace.DistributedGameTime)
-                    task.wait(0.05) 
+                    task.wait(0.01) 
                 end
                 
                 -- Logika V17: WaitBite cepat
-                task.wait(0.1)
+                task.wait(0.01)
 
                 -- 2. MINIGAME
                 local randomID = math.random(100000000, 999999999) 
