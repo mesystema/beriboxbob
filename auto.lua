@@ -1,9 +1,9 @@
 --[[ 
-    TURBO FISH-IT BOT v8 (AUTO-FIND FIX)
+    FISH-IT BOT v9 (LOG PRECISION MODE)
     Fitur: 
-    - Auto-Search Remote (Tidak peduli nama folder)
-    - Anti-Crash jika remote belum load
-    - Turbo Mode (Instant Catch)
+    - Menggunakan jalur folder RE/RF sesuai log kamu
+    - Menunggu folder load (Anti-Error "Folder Not Found")
+    - Turbo Mode (Instant Catch tanpa animasi)
 ]]
 
 local CoreGui = game:GetService("CoreGui")
@@ -12,11 +12,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
--- KONFIGURASI BOT
+-- KONFIGURASI TURBO
 local BotConfig = {
     IsRunning = false,
-    ActionDelay = 0.15, -- Sedikit diperlambat biar server nangkep sinyal
-    Cooldown = 0.5,
+    ActionDelay = 0.15, -- Jeda 0.15 detik (Sangat Cepat)
+    Cooldown = 0.5,     -- Istirahat sebentar setelah dapat ikan
     CastPower = 1.0
 }
 
@@ -25,16 +25,16 @@ local isMinimized = false
 local expandedSize = UDim2.new(0, 380, 0, 240)
 local minimizedSize = UDim2.new(0, 150, 0, 30)
 
--- BERSIHKAN UI LAMA
-if CoreGui:FindFirstChild("FishBotUI_V8") then
-    CoreGui.FishBotUI_V8:Destroy()
+if CoreGui:FindFirstChild("FishBotUI_V9") then
+    CoreGui.FishBotUI_V9:Destroy()
 end
 
+-- VARIABEL REMOTE
 local Remotes = { Equip = nil, Charge = nil, Minigame = nil, Finish = nil }
 
 -- UI SETUP
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FishBotUI_V8"
+ScreenGui.Name = "FishBotUI_V9"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 9999
 pcall(function() ScreenGui.Parent = CoreGui end)
@@ -44,7 +44,7 @@ local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = expandedSize
 MainFrame.Position = UDim2.new(0.5, -190, 0.2, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Parent = ScreenGui
@@ -54,8 +54,8 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -40, 0, 30)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🔎 Auto-Find Bot v8"
-TitleLabel.TextColor3 = Color3.fromRGB(0, 255, 255) -- Cyan
+TitleLabel.Text = "🎯 Precision Bot v9"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold
 TitleLabel.Font = Enum.Font.GothamBlack
 TitleLabel.TextSize = 14
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -91,7 +91,7 @@ Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 6)
 local ScrollFrame = Instance.new("ScrollingFrame")
 ScrollFrame.Size = UDim2.new(0.95, 0, 1, -45)
 ScrollFrame.Position = UDim2.new(0.025, 0, 0, 45)
-ScrollFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+ScrollFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 ScrollFrame.ScrollBarThickness = 4
 ScrollFrame.Parent = ContentFrame
 local UIListLayout = Instance.new("UIListLayout")
@@ -99,7 +99,7 @@ UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout.Padding = UDim.new(0, 2)
 UIListLayout.Parent = ScrollFrame
 
--- FUNGSI LOG
+-- FUNGSI LOGGING
 local function AddLog(text, colorType)
     local color = Color3.fromRGB(255, 255, 255)
     if colorType == "success" then color = Color3.fromRGB(46, 204, 113) end
@@ -119,42 +119,42 @@ local function AddLog(text, colorType)
     Label.Size = UDim2.new(1, 0, 0, 0)
     Label.Parent = ScrollFrame
     ScrollFrame.CanvasPosition = Vector2.new(0, 99999)
-    if #ScrollFrame:GetChildren() > 40 then ScrollFrame:GetChildren()[1]:Destroy() end
+    if #ScrollFrame:GetChildren() > 50 then ScrollFrame:GetChildren()[1]:Destroy() end
 end
 
--- [[ FUNGSI AUTO FIND (DEEP SEARCH) ]] --
-local function DeepSearchRemote(name)
-    AddLog("Mencari: " .. name .. "...", "info")
-    -- Cari di seluruh keturunan ReplicatedStorage
-    for _, v in pairs(ReplicatedStorage:GetDescendants()) do
-        if v.Name == name and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then
-            return v
-        end
-    end
-    return nil
-end
-
+-- [[ SETUP REMOTE SESUAI LOG ]] --
 local function SetupRemotes()
-    -- Reset Remotes
-    Remotes.Equip = DeepSearchRemote("EquipToolFromHotbar")
-    Remotes.Charge = DeepSearchRemote("ChargeFishingRod")
-    Remotes.Minigame = DeepSearchRemote("RequestFishingMinigameStarted")
-    Remotes.Finish = DeepSearchRemote("FishingCompleted")
+    AddLog("Mencari Folder RE & RF...", "info")
+    
+    -- Kita tunggu folder maksimal 10 detik agar tidak error "Not Found"
+    local RE = ReplicatedStorage:WaitForChild("RE", 10)
+    local RF = ReplicatedStorage:WaitForChild("RF", 10)
+
+    if not RE or not RF then
+        AddLog("❌ ERROR: Folder RE/RF tidak ketemu!", "error")
+        AddLog("Coba re-join game.", "warn")
+        return false
+    end
+
+    -- Cari Remote di dalam folder
+    Remotes.Equip = RE:WaitForChild("EquipToolFromHotbar", 5)
+    Remotes.Charge = RF:WaitForChild("ChargeFishingRod", 5)
+    Remotes.Minigame = RF:WaitForChild("RequestFishingMinigameStarted", 5)
+    Remotes.Finish = RE:WaitForChild("FishingCompleted", 5)
     
     if Remotes.Equip and Remotes.Charge and Remotes.Minigame and Remotes.Finish then
-        AddLog("✅ Semua Remote Ditemukan!", "success")
+        AddLog("✅ Remote Ditemukan Sesuai Log!", "success")
         return true
     else
-        AddLog("❌ GAGAL: Beberapa remote tidak ketemu.", "error")
-        AddLog("Pastikan kamu sudah masuk game sepenuhnya.", "warn")
+        AddLog("❌ ERROR: Nama remote mungkin berubah.", "error")
         return false
     end
 end
 
--- [[ LOGIKA BOT ]] --
+-- [[ ENGINE TURBO ]] --
 local function StartBot()
     task.spawn(function()
-        -- Langkah 1: Setup Remote Dulu
+        -- Langkah 1: Pastikan Remote Ada
         if not Remotes.Equip then
             local ready = SetupRemotes()
             if not ready then
@@ -165,32 +165,32 @@ local function StartBot()
             end
         end
 
-        AddLog("🚀 Memulai Farming...", "success")
+        AddLog("⚡ TURBO MODE START!", "success")
 
         while BotConfig.IsRunning do
             local success, err = pcall(function()
-                -- 1. EQUIP
+                -- 1. EQUIP (Ambil Alat)
                 Remotes.Equip:FireServer(1)
                 task.wait(BotConfig.ActionDelay)
 
-                -- 2. CHARGE
+                -- 2. CHARGE (Lempar - Pake waktu game agar valid)
                 Remotes.Charge:InvokeServer(workspace.DistributedGameTime)
                 task.wait(BotConfig.ActionDelay)
 
-                -- 3. MINIGAME
+                -- 3. MINIGAME (Langsung Menang)
                 local randomID = math.random(100000000, 999999999) 
                 Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time())
                 task.wait(BotConfig.ActionDelay)
 
-                -- 4. FINISH
+                -- 4. FINISH (Tarik Ikan)
                 Remotes.Finish:FireServer()
                 
-                AddLog("✅ Ikan Dapat!", "success")
-                task.wait(BotConfig.Cooldown)
+                AddLog("✅ Ikan +1 (Instan)", "success")
+                task.wait(BotConfig.Cooldown) -- Istirahat bentar
             end)
 
             if not success then
-                AddLog("Error Script: " .. tostring(err), "error")
+                AddLog("Lag/Error: " .. tostring(err), "error")
                 task.wait(1)
             end
             
@@ -227,7 +227,7 @@ MinBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Draggable
+-- Dragging
 local dragging, dragInput, dragStart, startPos
 local function update(input)
     local delta = input.Position - dragStart
