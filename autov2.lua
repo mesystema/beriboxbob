@@ -26,11 +26,11 @@ local BotConfig = {
 
     -- 2. WAKTU MAIN MINIGAME (Detik)
     -- Ini kunci suksesnya. Jangan di bawah 2.5 detik.
-    WaitGame = 2.9, 
+    WaitGame = 1.0, 
 
     -- 3. COOLDOWN (Detik)
     -- Istirahat setelah dapat ikan.
-    WaitCool = 0.8,
+    WaitCool = 0.1,
     
     -- Power Lemparan
     CastPower = 1.0
@@ -200,6 +200,7 @@ local function StartBot()
                 
                 -- STEP 1: CHARGE (LEMPAR)
                 Remotes.Charge:InvokeServer(workspace.DistributedGameTime)
+                AddLog("🎮 Lempar Pancing dan wait makan ikan", "warn")
                 
                 -- V14 Logic: Langsung gas, cuma delay dikit (ActionDelay)
                 -- Di sini kita pakai WaitBite yang sudah diset rendah (0.1)
