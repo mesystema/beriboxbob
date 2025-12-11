@@ -1,9 +1,9 @@
 --[[ 
-    FISH-IT BOT v11 (SMART EQUIP & UI FIX)
-    Fitur: 
-    - UI Log Rapi (Tidak menumpuk)
-    - Smart Equip (Tidak akan menyimpan pancingan jika sedang dipegang)
-    - Scanner Tetap Ada
+    FISH-IT BOT v12 (MANUAL HOLD MODE)
+    Solusi Equip Error:
+    - Bot TIDAK AKAN mencoba equip otomatis.
+    - Kamu WAJIB memegang pancingan sebelum tekan Start.
+    - Jika pancingan lepas, bot akan menunggu (PAUSE) sampai kamu pegang lagi.
 ]]
 
 local CoreGui = game:GetService("CoreGui")
@@ -16,25 +16,25 @@ local LocalPlayer = Players.LocalPlayer
 -- KONFIGURASI BOT
 local BotConfig = {
     IsRunning = false,
-    ActionDelay = 0.2, -- Sedikit lebih santai agar server tidak error
-    Cooldown = 0.8,
+    ActionDelay = 0.15, -- Kecepatan Turbo
+    Cooldown = 0.6,
     CastPower = 1.0
 }
 
 -- UI VARIABLES
-local expandedSize = UDim2.new(0, 400, 0, 280)
+local expandedSize = UDim2.new(0, 400, 0, 260)
 local minimizedSize = UDim2.new(0, 150, 0, 30)
 local isMinimized = false
 
-if CoreGui:FindFirstChild("FishBotUI_V11") then
-    CoreGui.FishBotUI_V11:Destroy()
+if CoreGui:FindFirstChild("FishBotUI_V12") then
+    CoreGui.FishBotUI_V12:Destroy()
 end
 
-local Remotes = { Equip = nil, Charge = nil, Minigame = nil, Finish = nil }
+local Remotes = { Charge = nil, Minigame = nil, Finish = nil }
 
 -- UI SETUP
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FishBotUI_V11"
+ScreenGui.Name = "FishBotUI_V12"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 9999
 pcall(function() ScreenGui.Parent = CoreGui end)
@@ -50,17 +50,19 @@ MainFrame.Active = true
 MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
+-- TITLE
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -40, 0, 30)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🤖 Smart Bot v11"
-TitleLabel.TextColor3 = Color3.fromRGB(0, 255, 127) -- Spring Green
+TitleLabel.Text = "🎣 Manual Hold Bot v12"
+TitleLabel.TextColor3 = Color3.fromRGB(0, 255, 255) -- Cyan
 TitleLabel.Font = Enum.Font.GothamBlack
 TitleLabel.TextSize = 14
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = MainFrame
 
+-- MINIMIZE
 local MinBtn = Instance.new("TextButton")
 MinBtn.Size = UDim2.new(0, 30, 0, 30)
 MinBtn.Position = UDim2.new(1, -30, 0, 0)
@@ -77,7 +79,7 @@ ContentFrame.Position = UDim2.new(0, 0, 0, 35)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.Parent = MainFrame
 
--- BUTTON CONTAINER
+-- BUTTONS
 local BtnContainer = Instance.new("Frame")
 BtnContainer.Size = UDim2.new(1, -20, 0, 35)
 BtnContainer.Position = UDim2.new(0, 10, 0, 0)
@@ -98,20 +100,20 @@ local ScanBtn = Instance.new("TextButton")
 ScanBtn.Size = UDim2.new(0.32, 0, 1, 0)
 ScanBtn.Position = UDim2.new(0.68, 0, 0, 0)
 ScanBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
-ScanBtn.Text = "🔍 SCAN"
+ScanBtn.Text = "🔍 FIX"
 ScanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ScanBtn.Font = Enum.Font.GothamBold
 ScanBtn.TextSize = 12
 ScanBtn.Parent = BtnContainer
 Instance.new("UICorner", ScanBtn).CornerRadius = UDim.new(0, 6)
 
--- SCROLL FRAME FIX (Agar Log Tidak Menumpuk)
+-- LOG DISPLAY
 local ScrollFrame = Instance.new("ScrollingFrame")
 ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
 ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
 ScrollFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 ScrollFrame.ScrollBarThickness = 4
-ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y -- FIX UTAMA
+ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 ScrollFrame.Parent = ContentFrame
 
@@ -120,14 +122,12 @@ UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout.Padding = UDim.new(0, 2)
 UIListLayout.Parent = ScrollFrame
 
--- FUNGSI LOGGING
 local function AddLog(text, colorType)
     local color = Color3.fromRGB(255, 255, 255)
     if colorType == "success" then color = Color3.fromRGB(46, 204, 113) end
     if colorType == "warn" then color = Color3.fromRGB(241, 196, 15) end
     if colorType == "error" then color = Color3.fromRGB(231, 76, 60) end
     if colorType == "info" then color = Color3.fromRGB(52, 152, 219) end
-    if colorType == "debug" then color = Color3.fromRGB(155, 89, 182) end 
 
     local Label = Instance.new("TextLabel")
     Label.BackgroundTransparency = 1
@@ -138,15 +138,12 @@ local function AddLog(text, colorType)
     Label.RichText = true
     Label.Text = text
     Label.TextColor3 = color
-    -- Agar ukuran label menyesuaikan panjang teks
     Label.Size = UDim2.new(1, 0, 0, 0)
     Label.AutomaticSize = Enum.AutomaticSize.Y 
     Label.Parent = ScrollFrame
 
-    -- Paksa update canvas agar bisa scroll
     ScrollFrame.CanvasPosition = Vector2.new(0, ScrollFrame.AbsoluteCanvasSize.Y)
     
-    -- Hapus log lama biar gak lag (max 50 baris)
     if #ScrollFrame:GetChildren() > 50 then 
         local first = ScrollFrame:GetChildren()[1]
         if first and first ~= UIListLayout then first:Destroy() end
@@ -172,83 +169,70 @@ local function FindRemoteSmart(partialName)
 end
 
 local function SetupRemotes()
-    Remotes.Equip = FindRemoteSmart("EquipTool")
+    -- Kita TIDAK BUTUH EquipRemote lagi karena manual
     Remotes.Charge = FindRemoteSmart("ChargeFish")
     Remotes.Minigame = FindRemoteSmart("Minigame")
     Remotes.Finish = FindRemoteSmart("FishingComplet")
     
-    if Remotes.Equip and Remotes.Charge and Remotes.Minigame and Remotes.Finish then
-        AddLog("✅ Semua Remote Siap!", "success")
+    if Remotes.Charge and Remotes.Minigame and Remotes.Finish then
+        AddLog("✅ Sistem Siap. Silakan pegang pancingan!", "success")
         return true
     else
-        AddLog("❌ Masih ada remote hilang. Scan dulu!", "error")
+        AddLog("❌ Remote belum ketemu. Coba Scan/Fix!", "error")
         return false
     end
 end
 
-ScanBtn.MouseButton1Click:Connect(function()
-    SetupRemotes()
-end)
+ScanBtn.MouseButton1Click:Connect(function() SetupRemotes() end)
 
--- [[ ENGINE PINTAR ]] --
-
--- Fungsi Cek Apakah Sedang Pegang Alat
+-- [[ FUNGSI CEK PANCINGAN ]] --
 local function IsHoldingTool()
     if LocalPlayer.Character then
-        -- Cari tool di dalam karakter
         local tool = LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
         if tool then return true end
     end
     return false
 end
 
+-- [[ ENGINE MANUAL HOLD ]] --
 local function StartBot()
     task.spawn(function()
-        if not Remotes.Equip then if not SetupRemotes() then BotConfig.IsRunning = false; return end end
+        if not Remotes.Charge then if not SetupRemotes() then BotConfig.IsRunning = false; return end end
         
-        AddLog("🚀 BOT DIMULAI...", "success")
+        AddLog("⚡ BOT JALAN! Pastikan pancingan di tangan.", "info")
 
         while BotConfig.IsRunning do
-            local success, err = pcall(function()
+            -- CEK: Apakah User Memegang Pancingan?
+            if IsHoldingTool() then
                 
-                -- STEP 1: SMART EQUIP (Fix Masalah Unequip)
-                if IsHoldingTool() then
-                    -- Jika sudah pegang alat, JANGAN equip lagi (skip)
-                    -- AddLog("Sudah pegang alat, lanjut...", "info") -- Optional log
-                else
-                    -- Jika tangan kosong, baru equip
-                    AddLog("Mengambil alat...", "warn")
-                    Remotes.Equip:FireServer(1)
-                    task.wait(0.5) -- Tunggu animasi equip
-                end
+                local success, err = pcall(function()
+                    -- STEP 1: CHARGE (Langsung lempar)
+                    Remotes.Charge:InvokeServer(workspace.DistributedGameTime)
+                    task.wait(BotConfig.ActionDelay)
 
-                -- Cek lagi apakah berhasil equip sebelum lanjut
-                if not IsHoldingTool() then
-                    AddLog("Gagal equip! Coba lagi...", "error")
+                    -- STEP 2: MINIGAME
+                    local randomID = math.random(100000000, 999999999) 
+                    Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time())
+                    task.wait(BotConfig.ActionDelay)
+
+                    -- STEP 3: FINISH
+                    Remotes.Finish:FireServer()
+                    
+                    AddLog("✅ Ikan +1", "success")
+                    task.wait(BotConfig.Cooldown)
+                end)
+
+                if not success then
+                    AddLog("Err: " .. tostring(err), "error")
                     task.wait(1)
-                    return -- Ulangi loop
                 end
 
-                -- STEP 2: CHARGE
-                Remotes.Charge:InvokeServer(workspace.DistributedGameTime)
-                task.wait(BotConfig.ActionDelay)
-
-                -- STEP 3: MINIGAME
-                local randomID = math.random(100000000, 999999999) 
-                Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time())
-                task.wait(BotConfig.ActionDelay)
-
-                -- STEP 4: FINISH
-                Remotes.Finish:FireServer()
-                
-                AddLog("✅ Ikan +1", "success")
-                task.wait(BotConfig.Cooldown)
-            end)
-
-            if not success then
-                AddLog("Err: " .. tostring(err), "error")
-                task.wait(1)
+            else
+                -- Jika pancingan lepas/belum dipegang
+                AddLog("⚠️ PAUSED: Tolong pegang pancingan...", "warn")
+                task.wait(1.5) -- Tunggu user memegang pancingan
             end
+            
             if not BotConfig.IsRunning then break end
         end
         ToggleBtn.Text = "▶ START"
