@@ -16,9 +16,9 @@ local LocalPlayer = Players.LocalPlayer
 -- KONFIGURASI BOT (PENTING!)
 local BotConfig = {
     IsRunning = false,
-    ActionDelay = 0.5,    -- Jeda antar aksi standar
-    MinigameTime = 2.8,   -- LAMA WAKTU MAIN MINIGAME (Ubah ke 3.0 atau 4.0 jika masih gagal)
-    Cooldown = 1.0,       -- Istirahat setelah dapat ikan
+    ActionDelay = 0.1,    -- Jeda antar aksi standar
+    MinigameTime = 1.0,   -- LAMA WAKTU MAIN MINIGAME (Ubah ke 3.0 atau 4.0 jika masih gagal)
+    Cooldown = 0.1,       -- Istirahat setelah dapat ikan
     CastPower = 1.0
 }
 
