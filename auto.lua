@@ -26,7 +26,7 @@ local BotConfig = {
 
     -- 2. WAKTU MAIN MINIGAME (Detik)
     -- Ini kunci suksesnya. Jangan di bawah 2.5 detik.
-    WaitGame = 2.8, 
+    WaitGame = 2.9, 
 
     -- 3. COOLDOWN (Detik)
     -- Istirahat setelah dapat ikan.
