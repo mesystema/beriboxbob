@@ -273,75 +273,76 @@ end
 ScanBtn.MouseButton1Click:Connect(function() SetupRemotes() end)
 
 -- [[ MAIN ENGINE (SEQUENTIAL) ]] --
+-- [[ START BOT: METODE "SPAM REQUEST" (ANTI-BUG) ]] --
 local function StartBot()
     task.spawn(function()
+        -- Cek remote dulu
         if not Remotes.Charge then if not SetupRemotes() then BotConfig.IsRunning = false; return end end
         
-        AddLog("⚙️ Mode Sekuensial Aktif...", "info")
+        AddLog("🤖 Mode AUTO-SPAM Aktif...", "info")
 
         while BotConfig.IsRunning do
-            
-            -- [[ LANGKAH 1: LEMPAR ]] --
-            AddLog("1. Melempar Kail...", "info")
+            -- 1. LEMPAR KAIL
+            AddLog("1. Melempar...", "info")
             KillAnimations()
             
-            -- Kita pakai InvokeServer SECARA LANGSUNG (Tanpa spawn)
-            -- Artinya script akan BERHENTI di sini sampai server bilang 'Oke Lempar Berhasil'
             pcall(function() 
                 Remotes.Charge:InvokeServer(workspace.DistributedGameTime) 
             end)
             
-            ForceBobberDown() -- Bantu fisika biar cepat
+            ForceBobberDown() -- Tenggelamkan pelampung biar cepat
             
-            -- JEDA 1: Tunggu Umpan Jatuh (Configurable)
-            if BotConfig.WaitThrow > 0 then
-                AddLog("⏳ Tunggu Jatuh ("..BotConfig.WaitThrow.."s)", "warn")
-                task.wait(BotConfig.WaitThrow)
-            end
-
-            -- [[ LANGKAH 2: TUNGGU GIGIT ]] --
-            if BotConfig.WaitBite > 0 then
-                AddLog("🐟 Menunggu Ikan ("..BotConfig.WaitBite.."s)", "warn")
-                task.wait(BotConfig.WaitBite)
-            end
-
-            -- [[ LANGKAH 3: REQUEST MINIGAME ]] --
-            AddLog("2. Start Minigame...", "info")
-            local randomID = math.random(100000000, 999999999) 
-            local Response = nil
-            local SuccessCall = false
+            AddLog("🐟 Menunggu Server...", "warn")
             
-            SuccessCall, Response = pcall(function()
-                return Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time())
-            end)
-
-            if SuccessCall and (Response == true or type(Response) == "userdata" or type(Response) == "table" or Response ~= nil) then
-                -- JIKA SERVER MENERIMA
-                AddLog("✅ Server ACC! (Tiket OK)", "debug")
+            -- 2. LOOP DETEKSI (CARA BARU)
+            -- Kita akan mencoba memulai minigame setiap 0.25 detik.
+            -- Kita tidak menunggu UI. Kita memaksa server merespon.
+            
+            local FishCaught = false
+            local StartTime = tick()
+            local MaxWait = 20 -- Batas waktu tunggu (detik) biar gak stuck
+            
+            repeat
+                -- Jeda sedikit biar tidak DC (Disconnect)
+                task.wait(0.25)
                 
-                -- JEDA 3: Main Minigame (Configurable)
-                AddLog("🎮 Main Game ("..BotConfig.WaitGame.."s)", "warn")
-                task.wait(BotConfig.WaitGame)
+                -- Coba Request Minigame (Pura-pura ikan sudah gigit)
+                local randomID = math.random(100000000, 999999999)
+                local Success, Response = pcall(function()
+                    return Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time())
+                end)
                 
-                -- [[ LANGKAH 4: FINISH ]] --
-                AddLog("3. Menarik Ikan...", "info")
-                pcall(function() Remotes.Finish:FireServer(Response) end)
-                KillAnimations()
+                -- LOGIKA PENTING:
+                -- Jika "Success" = true DAN "Response" ada isinya (bukan nil),
+                -- Berarti server bilang: "Iya, ada ikan! Ini tiket minigamenya."
+                if Success and (Response ~= nil) then
+                    FishCaught = true
+                    
+                    AddLog("✅ Ikan Nyangkut!", "success")
+                    
+                    -- Langsung selesaikan (Instant)
+                    task.wait(0.05) 
+                    pcall(function() Remotes.Finish:FireServer(Response) end)
+                    
+                    KillAnimations()
+                    AddLog("✨ SELESAI.", "success")
+                end
                 
-                AddLog("✨ SELESAI.", "success")
+                -- Cek timeout (misal pancingan nyangkut di batu)
+                if (tick() - StartTime) > MaxWait then
+                    AddLog("⚠️ Timeout (Terlalu lama). Reset.", "error")
+                    break -- Keluar dari loop, lempar ulang
+                end
                 
-                -- JEDA 4: Cooldown Akhir (Configurable)
-                AddLog("💤 Istirahat ("..BotConfig.WaitCool.."s)", "warn")
-                task.wait(BotConfig.WaitCool)
-                
-            else
-                -- JIKA SERVER MENOLAK
-                AddLog("⚠️ Gagal: Server belum siap.", "error")
-                task.wait(1.0) -- Jeda bentar biar gak spam error
-            end
+            until FishCaught or not BotConfig.IsRunning
+            
+            -- Jeda istirahat sebelum lempar lagi
+            task.wait(BotConfig.WaitCool)
             
             if not BotConfig.IsRunning then break end
         end
+        
+        -- Reset tombol saat stop
         ToggleBtn.Text = "▶ START"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
     end)
