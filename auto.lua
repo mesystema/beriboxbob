@@ -1,9 +1,9 @@
 --[[ 
-    FISH-IT BOT v13 (BLIND FORCE MODE)
-    Solusi "Paused":
-    - Menghapus sensor deteksi alat.
-    - Script akan "memaksa" mengirim sinyal remote apapun kondisinya.
-    - User WAJIB memegang pancingan secara visual agar server menerima sinyal.
+    FISH-IT BOT v14 (HUMAN TIMING FIX)
+    Perbaikan:
+    - Menambahkan jeda waktu 'Minigame Duration'.
+    - Mengatasi masalah server menolak memberi ikan karena terlalu cepat.
+    - Tetap menggunakan metode Force (Tanpa sensor alat).
 ]]
 
 local CoreGui = game:GetService("CoreGui")
@@ -13,11 +13,12 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- KONFIGURASI BOT
+-- KONFIGURASI BOT (PENTING!)
 local BotConfig = {
     IsRunning = false,
-    ActionDelay = 0.25, -- Sedikit diperlambat biar server tidak kaget
-    Cooldown = 0.8,
+    ActionDelay = 0.5,    -- Jeda antar aksi standar
+    MinigameTime = 2.8,   -- LAMA WAKTU MAIN MINIGAME (Ubah ke 3.0 atau 4.0 jika masih gagal)
+    Cooldown = 1.0,       -- Istirahat setelah dapat ikan
     CastPower = 1.0
 }
 
@@ -26,15 +27,15 @@ local expandedSize = UDim2.new(0, 400, 0, 260)
 local minimizedSize = UDim2.new(0, 150, 0, 30)
 local isMinimized = false
 
-if CoreGui:FindFirstChild("FishBotUI_V13") then
-    CoreGui.FishBotUI_V13:Destroy()
+if CoreGui:FindFirstChild("FishBotUI_V14") then
+    CoreGui.FishBotUI_V14:Destroy()
 end
 
 local Remotes = { Charge = nil, Minigame = nil, Finish = nil }
 
 -- UI SETUP
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FishBotUI_V13"
+ScreenGui.Name = "FishBotUI_V14"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 9999
 pcall(function() ScreenGui.Parent = CoreGui end)
@@ -44,7 +45,7 @@ local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = expandedSize
 MainFrame.Position = UDim2.new(0.5, -200, 0.2, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 15) -- Hijau Gelap Army
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Parent = ScreenGui
@@ -55,8 +56,8 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -40, 0, 30)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "💀 Blind Force v13"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 0, 50) -- Merah Garang
+TitleLabel.Text = "🎣 Humanized Bot v14"
+TitleLabel.TextColor3 = Color3.fromRGB(144, 238, 144) -- Light Green
 TitleLabel.Font = Enum.Font.GothamBlack
 TitleLabel.TextSize = 14
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -88,7 +89,7 @@ BtnContainer.Parent = ContentFrame
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0.65, 0, 1, 0)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-ToggleBtn.Text = "▶ START FORCE"
+ToggleBtn.Text = "▶ START"
 ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleBtn.Font = Enum.Font.GothamBold
 ToggleBtn.TextSize = 12
@@ -99,7 +100,7 @@ local ScanBtn = Instance.new("TextButton")
 ScanBtn.Size = UDim2.new(0.32, 0, 1, 0)
 ScanBtn.Position = UDim2.new(0.68, 0, 0, 0)
 ScanBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
-ScanBtn.Text = "🔍 RELOAD"
+ScanBtn.Text = "🔍 FIX"
 ScanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ScanBtn.Font = Enum.Font.GothamBold
 ScanBtn.TextSize = 12
@@ -154,7 +155,6 @@ local function FindRemoteSmart(partialName)
     for _, v in pairs(ReplicatedStorage:GetDescendants()) do
         if v.Name:lower():find(partialName:lower()) and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then return v end
     end
-    -- Scan juga di PlayerScripts atau Character kalau ada
     if LocalPlayer.Character then
         for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
             if v.Name:lower():find(partialName:lower()) and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then return v end
@@ -169,7 +169,7 @@ local function SetupRemotes()
     Remotes.Finish = FindRemoteSmart("FishingComplet")
     
     if Remotes.Charge and Remotes.Minigame and Remotes.Finish then
-        AddLog("✅ Remote Ready.", "success")
+        AddLog("✅ Sistem Siap. Wajib pegang pancingan!", "success")
         return true
     else
         AddLog("❌ Remote Missing. Scan lagi.", "error")
@@ -179,43 +179,42 @@ end
 
 ScanBtn.MouseButton1Click:Connect(function() SetupRemotes() end)
 
--- [[ ENGINE FORCE FIRE (NO SENSORS) ]] --
+-- [[ ENGINE HUMANIZED ]] --
 local function StartBot()
     task.spawn(function()
         if not Remotes.Charge then if not SetupRemotes() then BotConfig.IsRunning = false; return end end
         
-        AddLog("💀 FORCE MODE ON (Pegang Pancingan!)", "info")
+        AddLog("⏳ Mode Human Aktif (Delay " .. BotConfig.MinigameTime .. "s)", "info")
 
         while BotConfig.IsRunning do
-            -- KITA HAPUS SEMUA PENGECEKAN "IS HOLDING TOOL"
-            -- LANGSUNG TEMBAK!
-            
             local success, err = pcall(function()
-                -- STEP 1: CHARGE
-                -- Menggunakan pcall terpisah biar kalau gagal 1 step, gak mati semua
-                pcall(function() Remotes.Charge:InvokeServer(workspace.DistributedGameTime) end)
+                -- STEP 1: CHARGE (LEMPAR)
+                Remotes.Charge:InvokeServer(workspace.DistributedGameTime)
                 task.wait(BotConfig.ActionDelay)
 
-                -- STEP 2: MINIGAME
+                -- STEP 2: MINIGAME START
                 local randomID = math.random(100000000, 999999999) 
-                pcall(function() Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time()) end)
-                task.wait(BotConfig.ActionDelay)
-
-                -- STEP 3: FINISH
-                pcall(function() Remotes.Finish:FireServer() end)
+                Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time())
                 
-                AddLog("⚡ Cycle Sent", "success")
+                -- [[ BAGIAN PENTING: JEDA REALISTIS ]] --
+                AddLog("🐟 Ikan gigit! Main minigame...", "warn")
+                task.wait(BotConfig.MinigameTime) -- Tunggu 2.8 detik (Pura-pura main)
+
+                -- STEP 3: FINISH (CATCH)
+                Remotes.Finish:FireServer()
+                
+                AddLog("✅ Selesai! (Menunggu ikan masuk)", "success")
                 task.wait(BotConfig.Cooldown)
             end)
 
             if not success then
-                AddLog("Fatal Err: " .. tostring(err), "error")
+                AddLog("Error: " .. tostring(err), "error")
                 task.wait(1)
             end
             
             if not BotConfig.IsRunning then break end
         end
-        ToggleBtn.Text = "▶ START FORCE"
+        ToggleBtn.Text = "▶ START"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
     end)
 end
@@ -227,7 +226,7 @@ ToggleBtn.MouseButton1Click:Connect(function()
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
         StartBot()
     else
-        ToggleBtn.Text = "▶ START FORCE"
+        ToggleBtn.Text = "▶ START"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
         AddLog("Bot Berhenti.", "warn")
     end
