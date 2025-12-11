@@ -1,9 +1,11 @@
 --[[ 
-    FISH-IT BOT v15 (TIME TRAVELER / FAKE TIMESTAMP)
-    Teori:
-    - Memanipulasi argumen waktu (os.time() - 5).
-    - Menipu server agar mengira kita sudah main minigame selama 5 detik.
-    - Menghapus semua delay tunggu (INSTANT CATCH).
+    FISH-IT BOT v17 (THE PROVEN FIX)
+    Basis Mesin: Menggunakan logika V14 (yang sukses).
+    Fitur: Pengaturan waktu ditaruh di paling atas.
+    
+    DEFAULT SETTING (SUDAH DI-SET AGAR JALAN):
+    - Waktu Tunggu Ikan: 0.1 (Langsung gigit, jangan diubah lama-lama)
+    - Waktu Minigame: 2.85 (Biar server percaya)
 ]]
 
 local CoreGui = game:GetService("CoreGui")
@@ -13,25 +15,41 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- KONFIGURASI EKSTRIM
+-- [[ ⚙️ PENGATURAN V17 (UBAH DISINI) ⚙️ ]] --
 local BotConfig = {
     IsRunning = false,
-    ActionDelay = 0.15, -- Sangat Cepat
-    SpoofTime = 5,      -- Kita kurangi waktu sebanyak 5 detik (Fake History)
-    Cooldown = 0.5,     -- Jeda antar ikan
+    
+    -- 1. WAKTU NUNGGU IKAN (Detik)
+    -- V14 sukses karena ini cepat. Jangan diubah jadi 2 atau 3 detik.
+    -- Biarkan 0.1 atau 0.2 agar seperti "Instan Bite".
+    WaitBite = 0.1, 
+
+    -- 2. WAKTU MAIN MINIGAME (Detik)
+    -- Ini kunci suksesnya. Jangan di bawah 2.5 detik.
+    WaitGame = 2.8, 
+
+    -- 3. COOLDOWN (Detik)
+    -- Istirahat setelah dapat ikan.
+    WaitCool = 0.8,
+    
+    -- Power Lemparan
     CastPower = 1.0
 }
 
--- UI SETUP (Sama seperti v14 tapi warna tema Ungu Misterius)
+-- UI VARIABLES
 local expandedSize = UDim2.new(0, 400, 0, 260)
 local minimizedSize = UDim2.new(0, 150, 0, 30)
 local isMinimized = false
 
-if CoreGui:FindFirstChild("FishBotUI_V15") then CoreGui.FishBotUI_V15:Destroy() end
+if CoreGui:FindFirstChild("FishBotUI_V17") then
+    CoreGui.FishBotUI_V17:Destroy()
+end
 
 local Remotes = { Charge = nil, Minigame = nil, Finish = nil }
+
+-- UI SETUP
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FishBotUI_V15"
+ScreenGui.Name = "FishBotUI_V17"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 9999
 pcall(function() ScreenGui.Parent = CoreGui end)
@@ -41,18 +59,19 @@ local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = expandedSize
 MainFrame.Position = UDim2.new(0.5, -200, 0.2, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 10, 30) -- Ungu Gelap
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
+-- TITLE
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -40, 0, 30)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⏳ Time Traveler v15"
-TitleLabel.TextColor3 = Color3.fromRGB(200, 100, 255) -- Ungu Neon
+TitleLabel.Text = "🎣 Fish-It V17 (Remastered)"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold
 TitleLabel.Font = Enum.Font.GothamBlack
 TitleLabel.TextSize = 14
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -83,7 +102,7 @@ BtnContainer.Parent = ContentFrame
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0.65, 0, 1, 0)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-ToggleBtn.Text = "▶ START INSTANT"
+ToggleBtn.Text = "▶ START"
 ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleBtn.Font = Enum.Font.GothamBold
 ToggleBtn.TextSize = 12
@@ -133,6 +152,7 @@ local function AddLog(text, colorType)
     Label.Size = UDim2.new(1, 0, 0, 0)
     Label.AutomaticSize = Enum.AutomaticSize.Y 
     Label.Parent = ScrollFrame
+
     ScrollFrame.CanvasPosition = Vector2.new(0, ScrollFrame.AbsoluteCanvasSize.Y)
     if #ScrollFrame:GetChildren() > 50 then 
         local first = ScrollFrame:GetChildren()[1]
@@ -140,6 +160,7 @@ local function AddLog(text, colorType)
     end
 end
 
+-- [[ SCANNER ]] --
 local function FindRemoteSmart(partialName)
     for _, v in pairs(ReplicatedStorage:GetDescendants()) do
         if v.Name:lower():find(partialName:lower()) and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then return v end
@@ -167,38 +188,36 @@ end
 
 ScanBtn.MouseButton1Click:Connect(function() SetupRemotes() end)
 
--- [[ ENGINE TIME TRAVELER ]] --
+-- [[ ENGINE V14 (MESIN LAMA YANG SUKSES) ]] --
 local function StartBot()
     task.spawn(function()
         if not Remotes.Charge then if not SetupRemotes() then BotConfig.IsRunning = false; return end end
         
-        AddLog("🔮 Mencoba menipu waktu...", "info")
+        AddLog("🚀 Menggunakan Logic V14...", "info")
 
         while BotConfig.IsRunning do
             local success, err = pcall(function()
-                -- 1. CHARGE
+                
+                -- STEP 1: CHARGE (LEMPAR)
                 Remotes.Charge:InvokeServer(workspace.DistributedGameTime)
-                task.wait(BotConfig.ActionDelay)
+                
+                -- V14 Logic: Langsung gas, cuma delay dikit (ActionDelay)
+                -- Di sini kita pakai WaitBite yang sudah diset rendah (0.1)
+                task.wait(BotConfig.WaitBite)
 
-                -- 2. MINIGAME (FAKE TIME)
-                local randomID = math.random(100000000, 999999999)
+                -- STEP 2: MINIGAME
+                local randomID = math.random(100000000, 999999999) 
+                Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time())
                 
-                -- DI SINI KUNCINYA:
-                -- Kita kirim waktu masa lalu (os.time - 5 detik)
-                -- Server mungkin mengira kita sudah mulai 5 detik yg lalu
-                local fakeTime = os.time() - BotConfig.SpoofTime
-                
-                Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, fakeTime)
-                
-                -- KITA TIDAK TUNGGU LAMA-LAMA!
-                -- Langsung gas finish (Cuma jeda dikit biar sinyal nyampe)
-                task.wait(BotConfig.ActionDelay) 
+                -- TUNGGU MINIGAME (KUNCI SUKSES)
+                AddLog("🎮 Minigame ("..BotConfig.WaitGame.."s)...", "warn")
+                task.wait(BotConfig.WaitGame)
 
-                -- 3. FINISH
+                -- STEP 3: FINISH
                 Remotes.Finish:FireServer()
                 
-                AddLog("✨ INSTANT CATCH?", "success")
-                task.wait(BotConfig.Cooldown)
+                AddLog("✅ Ikan Dapat!", "success")
+                task.wait(BotConfig.WaitCool)
             end)
 
             if not success then
@@ -208,7 +227,7 @@ local function StartBot()
             
             if not BotConfig.IsRunning then break end
         end
-        ToggleBtn.Text = "▶ START INSTANT"
+        ToggleBtn.Text = "▶ START"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
     end)
 end
@@ -220,7 +239,7 @@ ToggleBtn.MouseButton1Click:Connect(function()
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
         StartBot()
     else
-        ToggleBtn.Text = "▶ START INSTANT"
+        ToggleBtn.Text = "▶ START"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
         AddLog("Bot Berhenti.", "warn")
     end
@@ -236,3 +255,19 @@ MinBtn.MouseButton1Click:Connect(function()
         MinBtn.Text = "_"; task.wait(0.2); ContentFrame.Visible = true
     end
 end)
+
+local dragging, dragInput, dragStart, startPos
+local function update(input)
+    local delta = input.Position - dragStart
+    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = input.Position; startPos = MainFrame.Position
+        input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+    end
+end)
+MainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input) if input == dragInput and dragging then update(input) end end)
