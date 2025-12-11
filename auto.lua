@@ -1,9 +1,8 @@
 --[[ 
-    FISH-IT BOT v14 (HUMAN TIMING FIX)
-    Perbaikan:
-    - Menambahkan jeda waktu 'Minigame Duration'.
-    - Mengatasi masalah server menolak memberi ikan karena terlalu cepat.
-    - Tetap menggunakan metode Force (Tanpa sensor alat).
+    FISH-IT BOT v16 (FULLY CONFIGURABLE)
+    Fitur Baru:
+    - Pengaturan 'BiteDelay': Kamu bisa atur berapa lama nunggu ikan menyambar.
+    - Struktur Config yang lebih lengkap.
 ]]
 
 local CoreGui = game:GetService("CoreGui")
@@ -13,29 +12,44 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- KONFIGURASI BOT (PENTING!)
+-- [[ ⚙️ PENGATURAN WAKTU (UBAH DISINI) ⚙️ ]] --
 local BotConfig = {
     IsRunning = false,
-    ActionDelay = 0.1,    -- Jeda antar aksi standar
-    MinigameTime = 1.0,   -- LAMA WAKTU MAIN MINIGAME (Ubah ke 3.0 atau 4.0 jika masih gagal)
-    Cooldown = 0.1,       -- Istirahat setelah dapat ikan
-    CastPower = 1.0
+    CastPower = 1.0,
+
+    -- 1. Jeda Klik (Detik)
+    -- Seberapa cepat bot menekan tombol (Jeda teknis).
+    ActionDelay = 0.2, 
+
+    -- 2. Waktu Nunggu Ikan (Detik) [FITUR BARU]
+    -- Setelah lempar, nunggu berapa detik baru ikan gigit?
+    -- Set 0.1 untuk Instan. Set 2.0 - 5.0 untuk Legit/Wajar.
+    BiteDelay = 1.0, 
+
+    -- 3. Waktu Main Minigame (Detik)
+    -- Berapa lama pura-pura main minigame agar server tidak curiga.
+    -- Minimal 2.5 - 3.0 detik.
+    MinigameTime = 2.0, 
+
+    -- 4. Istirahat (Detik)
+    -- Jeda setelah dapat ikan sebelum melempar lagi.
+    Cooldown = 1.0 
 }
 
 -- UI VARIABLES
-local expandedSize = UDim2.new(0, 400, 0, 260)
+local expandedSize = UDim2.new(0, 400, 0, 280)
 local minimizedSize = UDim2.new(0, 150, 0, 30)
 local isMinimized = false
 
-if CoreGui:FindFirstChild("FishBotUI_V14") then
-    CoreGui.FishBotUI_V14:Destroy()
+if CoreGui:FindFirstChild("FishBotUI_V16") then
+    CoreGui.FishBotUI_V16:Destroy()
 end
 
 local Remotes = { Charge = nil, Minigame = nil, Finish = nil }
 
 -- UI SETUP
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FishBotUI_V14"
+ScreenGui.Name = "FishBotUI_V16"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 9999
 pcall(function() ScreenGui.Parent = CoreGui end)
@@ -45,7 +59,7 @@ local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = expandedSize
 MainFrame.Position = UDim2.new(0.5, -200, 0.2, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 15) -- Hijau Gelap Army
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25) -- Dark Grey Blue
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Parent = ScreenGui
@@ -56,8 +70,8 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -40, 0, 30)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🎣 Humanized Bot v14"
-TitleLabel.TextColor3 = Color3.fromRGB(144, 238, 144) -- Light Green
+TitleLabel.Text = "🎛️ Configurable Bot v16"
+TitleLabel.TextColor3 = Color3.fromRGB(100, 200, 255) -- Sky Blue
 TitleLabel.Font = Enum.Font.GothamBlack
 TitleLabel.TextSize = 14
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -167,9 +181,8 @@ local function SetupRemotes()
     Remotes.Charge = FindRemoteSmart("ChargeFish")
     Remotes.Minigame = FindRemoteSmart("Minigame")
     Remotes.Finish = FindRemoteSmart("FishingComplet")
-    
     if Remotes.Charge and Remotes.Minigame and Remotes.Finish then
-        AddLog("✅ Sistem Siap. Wajib pegang pancingan!", "success")
+        AddLog("✅ Sistem Siap. Pegang Pancingan!", "success")
         return true
     else
         AddLog("❌ Remote Missing. Scan lagi.", "error")
@@ -179,36 +192,44 @@ end
 
 ScanBtn.MouseButton1Click:Connect(function() SetupRemotes() end)
 
--- [[ ENGINE HUMANIZED ]] --
+-- [[ ENGINE ]] --
 local function StartBot()
     task.spawn(function()
         if not Remotes.Charge then if not SetupRemotes() then BotConfig.IsRunning = false; return end end
         
-        AddLog("⏳ Mode Human Aktif (Delay " .. BotConfig.MinigameTime .. "s)", "info")
+        AddLog("⚙️ Bot Jalan (Delay Ikan: "..BotConfig.BiteDelay.."s)", "info")
 
         while BotConfig.IsRunning do
             local success, err = pcall(function()
-                -- STEP 1: CHARGE (LEMPAR)
+                
+                -- STEP 1: LEMPAR KAIL
                 Remotes.Charge:InvokeServer(workspace.DistributedGameTime)
-                task.wait(BotConfig.ActionDelay)
+                
+                -- [[ JEDA TUNGGU IKAN MENYAMBAR ]] --
+                if BotConfig.BiteDelay > 0 then
+                    AddLog("⏳ Nunggu ikan ("..BotConfig.BiteDelay.."s)...", "info")
+                    task.wait(BotConfig.BiteDelay)
+                else
+                    task.wait(BotConfig.ActionDelay) -- Jeda minimal kalau diset 0
+                end
 
-                -- STEP 2: MINIGAME START
+                -- STEP 2: MULAI MINIGAME
                 local randomID = math.random(100000000, 999999999) 
                 Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time())
                 
-                -- [[ BAGIAN PENTING: JEDA REALISTIS ]] --
-                AddLog("🐟 Ikan gigit! Main minigame...", "warn")
-                task.wait(BotConfig.MinigameTime) -- Tunggu 2.8 detik (Pura-pura main)
+                -- [[ JEDA MAIN MINIGAME ]] --
+                AddLog("🎮 Main minigame ("..BotConfig.MinigameTime.."s)...", "warn")
+                task.wait(BotConfig.MinigameTime)
 
-                -- STEP 3: FINISH (CATCH)
+                -- STEP 3: AMBIL HASIL
                 Remotes.Finish:FireServer()
                 
-                AddLog("✅ Selesai! (Menunggu ikan masuk)", "success")
+                AddLog("✅ Ikan Dapat!", "success")
                 task.wait(BotConfig.Cooldown)
             end)
 
             if not success then
-                AddLog("Error: " .. tostring(err), "error")
+                AddLog("Err: " .. tostring(err), "error")
                 task.wait(1)
             end
             
