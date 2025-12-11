@@ -27,7 +27,7 @@ local BotConfig = {
     WaitGame = 2.6, 
     
     WaitCool = 0.1,
-    CastPower = 1.0,
+    CastPower = 2.0,
     
     -- Seberapa jauh ke bawah pelampung diteleport? (Estimasi jarak air dari pemain)
     WaterDepthOffset = 15 
