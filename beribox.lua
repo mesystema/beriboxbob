@@ -1,29 +1,32 @@
 --[[ 
-    ANDROID REMOTE SPY UI v6 (AGGRESSIVE MODE)
-    Perbaikan:
-    - Menghapus filter nama method (Log SEMUA aktivitas Remote)
-    - Menambahkan hook __index untuk menangkap "Direct Calls"
-    - UI Test Button tetap ada
+    ANDROID REMOTE SPY UI v7 (STABILITY FIX)
+    Metode: Buffer Queue System (Sistem Antrian)
+    Fix: Mengatasi Crash saat Start/Clear/Test
 ]]
 
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
--- CONFIG
+-- KONFIGURASI
 local isLogging = false 
 local isMinimized = false
-local expandedSize = UDim2.new(0, 420, 0, 260)
-local minimizedSize = UDim2.new(0, 160, 0, 30)
+local LogQueue = {} -- Tempat penampungan data sementara (Buffer)
+local isProcessing = false
 
--- 1. CLEANUP UI
-if CoreGui:FindFirstChild("AndroidSpyUI_v6") then
-    CoreGui.AndroidSpyUI_v6:Destroy()
+-- UKURAN UI
+local expandedSize = UDim2.new(0, 400, 0, 250)
+local minimizedSize = UDim2.new(0, 150, 0, 30)
+
+-- 1. BERSIHKAN UI LAMA
+if CoreGui:FindFirstChild("AndroidSpyUI_v7") then
+    CoreGui.AndroidSpyUI_v7:Destroy()
 end
 
 -- 2. SETUP GUI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AndroidSpyUI_v6"
+ScreenGui.Name = "AndroidSpyUI_v7"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 9999
 pcall(function() ScreenGui.Parent = CoreGui end)
@@ -33,27 +36,27 @@ if not ScreenGui.Parent then ScreenGui.Parent = Players.LocalPlayer:WaitForChild
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = expandedSize
-MainFrame.Position = UDim2.new(0.5, -210, 0.15, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+MainFrame.Position = UDim2.new(0.5, -200, 0.15, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true 
 MainFrame.ClipsDescendants = true
 MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
--- TITLE BAR
+-- TITLE
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -40, 0, 30)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🔥 Aggressive Spy v6"
+TitleLabel.Text = "🛡️ Stable Spy v7"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.Font = Enum.Font.GothamBlack
 TitleLabel.TextSize = 14
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = MainFrame
 
--- MINIMIZE BUTTON
+-- MINIMIZE
 local MinBtn = Instance.new("TextButton")
 MinBtn.Size = UDim2.new(0, 30, 0, 30)
 MinBtn.Position = UDim2.new(1, -30, 0, 0)
@@ -64,7 +67,7 @@ MinBtn.Font = Enum.Font.GothamBold
 MinBtn.TextSize = 18
 MinBtn.Parent = MainFrame
 
--- CONTENT & BUTTONS
+-- CONTENT
 local ContentFrame = Instance.new("Frame")
 ContentFrame.Size = UDim2.new(1, 0, 1, -35)
 ContentFrame.Position = UDim2.new(0, 0, 0, 35)
@@ -77,6 +80,7 @@ ButtonFrame.Position = UDim2.new(0, 10, 0, 0)
 ButtonFrame.BackgroundTransparency = 1
 ButtonFrame.Parent = ContentFrame
 
+-- TOMBOL-TOMBOL
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0.4, 0, 1, 0)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
@@ -112,15 +116,15 @@ Instance.new("UICorner", ClearBtn).CornerRadius = UDim.new(0, 4)
 local ScrollFrame = Instance.new("ScrollingFrame")
 ScrollFrame.Size = UDim2.new(1, -10, 1, -40)
 ScrollFrame.Position = UDim2.new(0, 5, 0, 35)
-ScrollFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+ScrollFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 ScrollFrame.ScrollBarThickness = 4
 ScrollFrame.Parent = ContentFrame
-local UIListLayout_Log = Instance.new("UIListLayout")
-UIListLayout_Log.SortOrder = Enum.SortOrder.LayoutOrder
-UIListLayout_Log.Padding = UDim.new(0, 2)
-UIListLayout_Log.Parent = ScrollFrame
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 2)
+UIListLayout.Parent = ScrollFrame
 
--- UI LOGIC
+-- UI LOGIC (Minimize & Drag)
 MinBtn.MouseButton1Click:Connect(function()
     isMinimized = not isMinimized
     if isMinimized then
@@ -153,93 +157,110 @@ MainFrame.InputChanged:Connect(function(input)
 end)
 UserInputService.InputChanged:Connect(function(input) if input == dragInput and dragging then update(input) end end)
 
+-- TOMBOL LOGIC
 ToggleBtn.MouseButton1Click:Connect(function()
     isLogging = not isLogging
-    ToggleBtn.Text = isLogging and "⏹ STOP" or "▶ START"
-    ToggleBtn.BackgroundColor3 = isLogging and Color3.fromRGB(230, 126, 34) or Color3.fromRGB(46, 204, 113)
-end)
-ClearBtn.MouseButton1Click:Connect(function()
-    for _, v in pairs(ScrollFrame:GetChildren()) do if v:IsA("TextLabel") then v:Destroy() end end
+    if isLogging then
+        ToggleBtn.Text = "⏹ STOP"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(230, 126, 34)
+    else
+        ToggleBtn.Text = "▶ START"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+    end
 end)
 
--- LOGGER FUNCTION
-local function LogEvent(remoteName, method, args)
+ClearBtn.MouseButton1Click:Connect(function()
+    LogQueue = {} -- Bersihkan antrian juga
+    for _, v in pairs(ScrollFrame:GetChildren()) do 
+        if v:IsA("TextLabel") then v:Destroy() end 
+    end
+end)
+
+-- 3. SISTEM PENCATATAN DATA (BUFFER)
+-- Fungsi ini HANYA menyimpan data, tidak membuat UI (Biar gak crash)
+local function AddToQueue(remoteName, method, args)
     if not isLogging then return end
     
-    task.spawn(function()
-        local argsString = ""
-        for i, v in pairs(args) do
-            local s = tostring(v)
-            if type(v) == "table" then s = "{...}" end
-            if type(v) == "userdata" then s = typeof(v) end
-            argsString = argsString .. s .. ", "
-        end
-        argsString = argsString:sub(1, -3)
-        if argsString == "" then argsString = "nil" end
+    -- Batas Aman: Jika antrian > 50, jangan terima lagi (Anti Lag)
+    if #LogQueue > 50 then return end
 
-        local Label = Instance.new("TextLabel")
-        Label.BackgroundTransparency = 1
-        Label.Font = Enum.Font.Code
-        Label.TextSize = 12
-        Label.TextXAlignment = Enum.TextXAlignment.Left
-        Label.TextWrapped = true
-        Label.RichText = true
-        
-        local colorHex = "#3498db"
-        local mLower = method:lower()
-        if mLower:find("fire") then colorHex = "#f1c40f" end
-        if mLower:find("test") then colorHex = "#9b59b6" end
-
-        Label.Text = string.format("<font color='%s'><b>[%s] %s</b></font>\n<font color='#bdc3c7'>%s</font>", colorHex, method, remoteName, argsString)
-        Label.AutomaticSize = Enum.AutomaticSize.Y
-        Label.Size = UDim2.new(1, 0, 0, 0)
-        Label.Parent = ScrollFrame
-        
-        if ScrollFrame.CanvasPosition.Y >= (ScrollFrame.CanvasSize.Y.Offset - ScrollFrame.AbsoluteSize.Y) then
-             ScrollFrame.CanvasPosition = Vector2.new(0, 99999)
-        end
-    end)
+    table.insert(LogQueue, {
+        name = remoteName,
+        method = method,
+        args = args,
+        color = (method == "FireServer" and "#f1c40f") or (method == "TEST" and "#9b59b6") or "#3498db"
+    })
 end
 
 TestBtn.MouseButton1Click:Connect(function()
     local old = isLogging; isLogging = true
-    LogEvent("Test_Remote", "TEST", {"Test Success!", 123}); isLogging = old
+    AddToQueue("Test_Remote", "TEST", {"System Check", os.time()})
+    isLogging = old
 end)
 
--- [[ AGGRESSIVE HOOKING LOGIC ]] --
+-- 4. SISTEM UI UPDATE (Render Loop)
+-- Ini berjalan terpisah dari Hook, setiap 0.1 detik memproses data
+task.spawn(function()
+    while true do
+        task.wait(0.1) -- Delay kecil agar HP bisa nafas
+        
+        if #LogQueue > 0 then
+            -- Proses maksimal 5 log per update agar tidak freeze
+            for i = 1, 5 do
+                local data = table.remove(LogQueue, 1)
+                if not data then break end
+                
+                -- Proses parsing argumen di sini (Aman)
+                local success, argsString = pcall(function()
+                    local s = ""
+                    for _, v in pairs(data.args) do
+                        local val = tostring(v)
+                        if type(v) == "table" then val = "{...}" end
+                        s = s .. val .. ", "
+                    end
+                    return s:sub(1, -3)
+                end)
+                if not success or argsString == "" then argsString = "nil" end
 
+                local Label = Instance.new("TextLabel")
+                Label.BackgroundTransparency = 1
+                Label.Font = Enum.Font.Code
+                Label.TextSize = 12
+                Label.TextXAlignment = Enum.TextXAlignment.Left
+                Label.TextWrapped = true
+                Label.RichText = true
+                Label.Text = string.format("<font color='%s'><b>[%s] %s</b></font>\n<font color='#bdc3c7'>%s</font>", data.color, data.method, data.name, argsString)
+                Label.AutomaticSize = Enum.AutomaticSize.Y
+                Label.Size = UDim2.new(1, 0, 0, 0)
+                Label.Parent = ScrollFrame
+            end
+            
+            -- Auto Scroll
+            if ScrollFrame.CanvasPosition.Y >= (ScrollFrame.CanvasSize.Y.Offset - ScrollFrame.AbsoluteSize.Y - 50) then
+                 ScrollFrame.CanvasPosition = Vector2.new(0, 99999)
+            end
+        end
+    end
+end)
+
+-- 5. HOOKING (SAFE MODE)
+-- Kita kembali ke Namecall saja, karena Index hook sering bikin crash di Android
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
-local oldIndex = mt.__index
-
 if setreadonly then setreadonly(mt, false) else make_writeable(mt) end
 
--- 1. NAMECALL HOOK (Untuk call biasa: remote:FireServer())
 mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
     
-    -- Cek jika ini Remote Event/Function
-    if isLogging and typeof(self) == "Instance" and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
-        -- KITA HAPUS PENGECEKAN METHOD NAME. LOG SEMUANYA.
-        -- Ini akan spam console jika game banyak interaksi, tapi ini satu-satunya cara deteksi.
-        LogEvent(self.Name, tostring(method), {...})
+    if isLogging and (self.ClassName == "RemoteEvent" or self.ClassName == "RemoteFunction") then
+        local m = tostring(method):lower()
+        -- Deteksi longgar: FireServer, InvokeServer, atau nama method apa saja (opsional)
+        if m == "fireserver" or m == "invokeserver" then
+            AddToQueue(self.Name, tostring(method), {...})
+        end
     end
 
     return oldNamecall(self, ...)
-end)
-
--- 2. INDEX HOOK (Untuk direct call: remote.FireServer(remote, ...))
-mt.__index = newcclosure(function(self, k)
-    -- Jika game mencoba mengakses fungsi "FireServer" atau "InvokeServer"
-    if isLogging and typeof(self) == "Instance" and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
-        if tostring(k):lower() == "fireserver" or tostring(k):lower() == "invokeserver" then
-            -- Kita tidak bisa log argumen di sini karena ini baru "mengambil" fungsi, belum "memanggil".
-            -- Tapi setidaknya kita tahu remote mana yang disentuh.
-            LogEvent(self.Name, "DirectIndex: " .. tostring(k), {"Detected attempt to get function"})
-        end
-    end
-    
-    return oldIndex(self, k)
 end)
 
 if setreadonly then setreadonly(mt, true) end
