@@ -1,9 +1,9 @@
 --[[ 
-    FISH-IT BOT v12 (MANUAL HOLD MODE)
-    Solusi Equip Error:
-    - Bot TIDAK AKAN mencoba equip otomatis.
-    - Kamu WAJIB memegang pancingan sebelum tekan Start.
-    - Jika pancingan lepas, bot akan menunggu (PAUSE) sampai kamu pegang lagi.
+    FISH-IT BOT v13 (BLIND FORCE MODE)
+    Solusi "Paused":
+    - Menghapus sensor deteksi alat.
+    - Script akan "memaksa" mengirim sinyal remote apapun kondisinya.
+    - User WAJIB memegang pancingan secara visual agar server menerima sinyal.
 ]]
 
 local CoreGui = game:GetService("CoreGui")
@@ -16,8 +16,8 @@ local LocalPlayer = Players.LocalPlayer
 -- KONFIGURASI BOT
 local BotConfig = {
     IsRunning = false,
-    ActionDelay = 0.15, -- Kecepatan Turbo
-    Cooldown = 0.6,
+    ActionDelay = 0.25, -- Sedikit diperlambat biar server tidak kaget
+    Cooldown = 0.8,
     CastPower = 1.0
 }
 
@@ -26,15 +26,15 @@ local expandedSize = UDim2.new(0, 400, 0, 260)
 local minimizedSize = UDim2.new(0, 150, 0, 30)
 local isMinimized = false
 
-if CoreGui:FindFirstChild("FishBotUI_V12") then
-    CoreGui.FishBotUI_V12:Destroy()
+if CoreGui:FindFirstChild("FishBotUI_V13") then
+    CoreGui.FishBotUI_V13:Destroy()
 end
 
 local Remotes = { Charge = nil, Minigame = nil, Finish = nil }
 
 -- UI SETUP
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FishBotUI_V12"
+ScreenGui.Name = "FishBotUI_V13"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 9999
 pcall(function() ScreenGui.Parent = CoreGui end)
@@ -44,7 +44,7 @@ local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = expandedSize
 MainFrame.Position = UDim2.new(0.5, -200, 0.2, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Parent = ScreenGui
@@ -55,14 +55,13 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -40, 0, 30)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🎣 Manual Hold Bot v12"
-TitleLabel.TextColor3 = Color3.fromRGB(0, 255, 255) -- Cyan
+TitleLabel.Text = "💀 Blind Force v13"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 0, 50) -- Merah Garang
 TitleLabel.Font = Enum.Font.GothamBlack
 TitleLabel.TextSize = 14
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = MainFrame
 
--- MINIMIZE
 local MinBtn = Instance.new("TextButton")
 MinBtn.Size = UDim2.new(0, 30, 0, 30)
 MinBtn.Position = UDim2.new(1, -30, 0, 0)
@@ -89,7 +88,7 @@ BtnContainer.Parent = ContentFrame
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0.65, 0, 1, 0)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-ToggleBtn.Text = "▶ START"
+ToggleBtn.Text = "▶ START FORCE"
 ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleBtn.Font = Enum.Font.GothamBold
 ToggleBtn.TextSize = 12
@@ -100,7 +99,7 @@ local ScanBtn = Instance.new("TextButton")
 ScanBtn.Size = UDim2.new(0.32, 0, 1, 0)
 ScanBtn.Position = UDim2.new(0.68, 0, 0, 0)
 ScanBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
-ScanBtn.Text = "🔍 FIX"
+ScanBtn.Text = "🔍 RELOAD"
 ScanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ScanBtn.Font = Enum.Font.GothamBold
 ScanBtn.TextSize = 12
@@ -150,17 +149,13 @@ local function AddLog(text, colorType)
     end
 end
 
--- [[ FUNGSI SCANNER ]] --
+-- [[ SCANNER ]] --
 local function FindRemoteSmart(partialName)
     for _, v in pairs(ReplicatedStorage:GetDescendants()) do
         if v.Name:lower():find(partialName:lower()) and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then return v end
     end
-    if LocalPlayer and LocalPlayer:FindFirstChild("Backpack") then
-        for _, v in pairs(LocalPlayer.Backpack:GetDescendants()) do
-            if v.Name:lower():find(partialName:lower()) and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then return v end
-        end
-    end
-    if LocalPlayer and LocalPlayer.Character then
+    -- Scan juga di PlayerScripts atau Character kalau ada
+    if LocalPlayer.Character then
         for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
             if v.Name:lower():find(partialName:lower()) and (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then return v end
         end
@@ -169,73 +164,58 @@ local function FindRemoteSmart(partialName)
 end
 
 local function SetupRemotes()
-    -- Kita TIDAK BUTUH EquipRemote lagi karena manual
     Remotes.Charge = FindRemoteSmart("ChargeFish")
     Remotes.Minigame = FindRemoteSmart("Minigame")
     Remotes.Finish = FindRemoteSmart("FishingComplet")
     
     if Remotes.Charge and Remotes.Minigame and Remotes.Finish then
-        AddLog("✅ Sistem Siap. Silakan pegang pancingan!", "success")
+        AddLog("✅ Remote Ready.", "success")
         return true
     else
-        AddLog("❌ Remote belum ketemu. Coba Scan/Fix!", "error")
+        AddLog("❌ Remote Missing. Scan lagi.", "error")
         return false
     end
 end
 
 ScanBtn.MouseButton1Click:Connect(function() SetupRemotes() end)
 
--- [[ FUNGSI CEK PANCINGAN ]] --
-local function IsHoldingTool()
-    if LocalPlayer.Character then
-        local tool = LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
-        if tool then return true end
-    end
-    return false
-end
-
--- [[ ENGINE MANUAL HOLD ]] --
+-- [[ ENGINE FORCE FIRE (NO SENSORS) ]] --
 local function StartBot()
     task.spawn(function()
         if not Remotes.Charge then if not SetupRemotes() then BotConfig.IsRunning = false; return end end
         
-        AddLog("⚡ BOT JALAN! Pastikan pancingan di tangan.", "info")
+        AddLog("💀 FORCE MODE ON (Pegang Pancingan!)", "info")
 
         while BotConfig.IsRunning do
-            -- CEK: Apakah User Memegang Pancingan?
-            if IsHoldingTool() then
+            -- KITA HAPUS SEMUA PENGECEKAN "IS HOLDING TOOL"
+            -- LANGSUNG TEMBAK!
+            
+            local success, err = pcall(function()
+                -- STEP 1: CHARGE
+                -- Menggunakan pcall terpisah biar kalau gagal 1 step, gak mati semua
+                pcall(function() Remotes.Charge:InvokeServer(workspace.DistributedGameTime) end)
+                task.wait(BotConfig.ActionDelay)
+
+                -- STEP 2: MINIGAME
+                local randomID = math.random(100000000, 999999999) 
+                pcall(function() Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time()) end)
+                task.wait(BotConfig.ActionDelay)
+
+                -- STEP 3: FINISH
+                pcall(function() Remotes.Finish:FireServer() end)
                 
-                local success, err = pcall(function()
-                    -- STEP 1: CHARGE (Langsung lempar)
-                    Remotes.Charge:InvokeServer(workspace.DistributedGameTime)
-                    task.wait(BotConfig.ActionDelay)
+                AddLog("⚡ Cycle Sent", "success")
+                task.wait(BotConfig.Cooldown)
+            end)
 
-                    -- STEP 2: MINIGAME
-                    local randomID = math.random(100000000, 999999999) 
-                    Remotes.Minigame:InvokeServer(BotConfig.CastPower, randomID, os.time())
-                    task.wait(BotConfig.ActionDelay)
-
-                    -- STEP 3: FINISH
-                    Remotes.Finish:FireServer()
-                    
-                    AddLog("✅ Ikan +1", "success")
-                    task.wait(BotConfig.Cooldown)
-                end)
-
-                if not success then
-                    AddLog("Err: " .. tostring(err), "error")
-                    task.wait(1)
-                end
-
-            else
-                -- Jika pancingan lepas/belum dipegang
-                AddLog("⚠️ PAUSED: Tolong pegang pancingan...", "warn")
-                task.wait(1.5) -- Tunggu user memegang pancingan
+            if not success then
+                AddLog("Fatal Err: " .. tostring(err), "error")
+                task.wait(1)
             end
             
             if not BotConfig.IsRunning then break end
         end
-        ToggleBtn.Text = "▶ START"
+        ToggleBtn.Text = "▶ START FORCE"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
     end)
 end
@@ -247,7 +227,7 @@ ToggleBtn.MouseButton1Click:Connect(function()
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
         StartBot()
     else
-        ToggleBtn.Text = "▶ START"
+        ToggleBtn.Text = "▶ START FORCE"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
         AddLog("Bot Berhenti.", "warn")
     end
