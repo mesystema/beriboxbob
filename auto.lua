@@ -29,7 +29,7 @@ local BotConfig = {
     -- 3. Waktu Main Minigame (Detik)
     -- Berapa lama pura-pura main minigame agar server tidak curiga.
     -- Minimal 2.5 - 3.0 detik.
-    MinigameTime = 2.0, 
+    MinigameTime = 2.8, 
 
     -- 4. Istirahat (Detik)
     -- Jeda setelah dapat ikan sebelum melempar lagi.
