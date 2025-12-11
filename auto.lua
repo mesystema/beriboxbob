@@ -19,12 +19,12 @@ local BotConfig = {
 
     -- 1. Jeda Klik (Detik)
     -- Seberapa cepat bot menekan tombol (Jeda teknis).
-    ActionDelay = 1.2, 
+    ActionDelay = 0.2, 
 
     -- 2. Waktu Nunggu Ikan (Detik) [FITUR BARU]
     -- Setelah lempar, nunggu berapa detik baru ikan gigit?
     -- Set 0.1 untuk Instan. Set 2.0 - 5.0 untuk Legit/Wajar.
-    BiteDelay = 1.0, 
+    BiteDelay = 3.0, 
 
     -- 3. Waktu Main Minigame (Detik)
     -- Berapa lama pura-pura main minigame agar server tidak curiga.
@@ -33,7 +33,7 @@ local BotConfig = {
 
     -- 4. Istirahat (Detik)
     -- Jeda setelah dapat ikan sebelum melempar lagi.
-    Cooldown = 1.0 
+    Cooldown = 0.0 
 }
 
 -- UI VARIABLES
