@@ -19,7 +19,7 @@ local BotConfig = {
 
     -- 1. Jeda Klik (Detik)
     -- Seberapa cepat bot menekan tombol (Jeda teknis).
-    ActionDelay = 0.2, 
+    ActionDelay = 1.2, 
 
     -- 2. Waktu Nunggu Ikan (Detik) [FITUR BARU]
     -- Setelah lempar, nunggu berapa detik baru ikan gigit?
