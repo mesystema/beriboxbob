@@ -1,11 +1,10 @@
 --[[
-    DebugToolUI: Roblox Remote Scanner & Tester (Mobile First)
-    Profesional, modular, dan efisien untuk Roblox Android.
-    - Scan semua RemoteEvent/RemoteFunction di ReplicatedStorage
-    - Setiap fungsi yang di-scan dapat di-click untuk membuka panel uji (test panel)
-    - Test panel memungkinkan pengiriman data (FireServer/InvokeServer) dan melihat respons
-    - Tidak blocking main game, event-driven, dan mudah dipelihara
+    DebugToolUI: Floating & Minimize-able Roblox Remote Scanner & Tester
+    Profesional, mobile-first, efisien, dan tidak blocking UI utama.
+    - UI dapat di-minimize/maximize (floating, draggable)
+    - Tidak menghalangi gameplay utama (posisi bisa diubah, minimize)
     - Praktik terbaik: camelCase, modular, komentar jelas
+    - Untuk client-side debugging RemoteEvent/RemoteFunction
 ]]
 
 local Players = game:GetService("Players")
@@ -62,20 +61,47 @@ function DebugTool:scanRemotes()
     self:updateRemoteListUI()
 end
 
--- UI: Buat tampilan utama
+-- UI: Buat tampilan utama (floating, draggable, minimize-able)
 function DebugTool:createUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "DebugToolUI"
     screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
     screenGui.Parent = player:WaitForChild("PlayerGui")
 
+    -- Floating main frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Size = UDim2.new(0, 340, 0, 320)
-    mainFrame.Position = UDim2.new(1, -350, 1, -340)
+    mainFrame.Position = UDim2.new(0, 40, 0, 80)
     mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     mainFrame.BackgroundTransparency = 0.15
     mainFrame.BorderSizePixel = 0
+    mainFrame.Active = true
+    mainFrame.Draggable = true
     mainFrame.Parent = screenGui
+
+    -- Minimize button
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Size = UDim2.new(0, 32, 0, 32)
+    minimizeBtn.Position = UDim2.new(1, -38, 0, 6)
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    minimizeBtn.Text = "-"
+    minimizeBtn.TextColor3 = Color3.new(1,1,1)
+    minimizeBtn.Font = Enum.Font.SourceSansBold
+    minimizeBtn.TextSize = 22
+    minimizeBtn.Parent = mainFrame
+
+    -- Restore button (hidden by default)
+    local restoreBtn = Instance.new("TextButton")
+    restoreBtn.Size = UDim2.new(0, 48, 0, 32)
+    restoreBtn.Position = UDim2.new(0, 10, 0, 10)
+    restoreBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+    restoreBtn.Text = "Show"
+    restoreBtn.TextColor3 = Color3.new(1,1,1)
+    restoreBtn.Font = Enum.Font.SourceSansBold
+    restoreBtn.TextSize = 18
+    restoreBtn.Visible = false
+    restoreBtn.Parent = screenGui
 
     local startBtn = Instance.new("TextButton")
     startBtn.Size = UDim2.new(0, 80, 0, 36)
@@ -153,6 +179,8 @@ function DebugTool:createUI()
     self.ui = {
         screenGui = screenGui,
         mainFrame = mainFrame,
+        minimizeBtn = minimizeBtn,
+        restoreBtn = restoreBtn,
         startBtn = startBtn,
         stopBtn = stopBtn,
         logFrame = logFrame,
@@ -160,6 +188,16 @@ function DebugTool:createUI()
         remoteFrame = remoteFrame,
         remoteTemplate = remoteTemplate
     }
+
+    -- Minimize/restore logic
+    minimizeBtn.MouseButton1Click:Connect(function()
+        mainFrame.Visible = false
+        restoreBtn.Visible = true
+    end)
+    restoreBtn.MouseButton1Click:Connect(function()
+        mainFrame.Visible = true
+        restoreBtn.Visible = false
+    end)
 
     -- Event handler
     startBtn.MouseButton1Click:Connect(function()
