@@ -354,11 +354,11 @@ local function executeLoop()
     end
 end
 
--- ===== BUTTON EVENTS =====
-startBtn.Activated:Connect(function()
+
+-- Gunakan MouseButton1Click agar kompatibel di Android
+startBtn.MouseButton1Click:Connect(function()
     if not isLooping then
         addLog(">>> START BUTTON <<<")
-        
         -- Cek remotes
         if not remotes.chargeRod or not remotes.minigameStart or not remotes.fishingCompleted then
             addLog("Scanning remotes...")
@@ -367,7 +367,6 @@ startBtn.Activated:Connect(function()
                 return
             end
         end
-        
         isLooping = true
         setStatus("RUNNING")
         spawn(executeLoop)
@@ -376,7 +375,7 @@ startBtn.Activated:Connect(function()
     end
 end)
 
-stopBtn.Activated:Connect(function()
+stopBtn.MouseButton1Click:Connect(function()
     addLog(">>> STOP BUTTON <<<")
     isLooping = false
     loopCount = 0
