@@ -18,23 +18,57 @@ end
 
 -- Konfigurasi Remote References - dengan timeout handling
 local remotes = {}
-local function loadRemote(path, isWait)
-    local parts = string.split(path, "/")
-    local remote = ReplicatedStorage:FindFirstChild(parts[1])
-    if remote then
-        for i = 2, #parts do
-            remote = remote:FindFirstChild(parts[i])
-            if not remote then break end
+
+-- Helper untuk split string (kompatibel dengan Lua lama)
+local function splitString(str, delimiter)
+    local parts = {}
+    local pattern = "([^" .. delimiter .. "]+)"
+    for part in string.gmatch(str, pattern) do
+        table.insert(parts, part)
+    end
+    return parts
+end
+
+-- List semua item di ReplicatedStorage untuk debugging
+local function listRemotes()
+    print("\n=== REMOTES AVAILABLE IN REPLICATED STORAGE ===")
+    for _, child in pairs(ReplicatedStorage:GetChildren()) do
+        print("📁 " .. child.Name .. " (" .. child.ClassName .. ")")
+        if child:IsA("RemoteFunction") or child:IsA("RemoteEvent") then
+            print("   └─ Type: " .. child.ClassName)
         end
     end
-    return remote
+    print("==============================================\n")
+end
+
+-- Run debug listing
+listRemotes()
+
+local function loadRemote(searchName)
+    -- Cari exact match dulu
+    local found = ReplicatedStorage:FindFirstChild(searchName)
+    if found then
+        print("✅ Found remote: " .. searchName)
+        return found
+    end
+    
+    -- Cari partial match
+    for _, child in pairs(ReplicatedStorage:GetChildren()) do
+        if string.find(child.Name, searchName, 1, true) then
+            print("⚠️  Partial match for " .. searchName .. " -> Found: " .. child.Name)
+            return child
+        end
+    end
+    
+    print("❌ Remote not found: " .. searchName)
+    return nil
 end
 
 -- Load remotes dengan safe checking
-remotes.chargeRod = loadRemote("RF/ChargeFishingRod")
-remotes.minigameStart = loadRemote("RF/RequestFishingMinigameStarted")
-remotes.fishingCompleted = loadRemote("RE/FishingCompleted")
-remotes.cancelInput = loadRemote("RE/CancelFishingInput")
+remotes.chargeRod = loadRemote("ChargeFishingRod")
+remotes.minigameStart = loadRemote("RequestFishingMinigameStarted")
+remotes.fishingCompleted = loadRemote("FishingCompleted")
+remotes.cancelInput = loadRemote("CancelFishingInput")
 
 -- UI Setup
 local screenGui = Instance.new("ScreenGui")
@@ -156,6 +190,13 @@ statusLabel.TextSize = 14
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.TextWrapped = true
 statusLabel.Parent = mainFrame
+
+-- Status awal - tampilkan remote status
+print("\n[BOLO] UI Loaded - Checking Remotes...")
+print("ChargeRod: " .. (remotes.chargeRod and "✅" or "❌"))
+print("MinigameStart: " .. (remotes.minigameStart and "✅" or "❌"))
+print("FishingCompleted: " .. (remotes.fishingCompleted and "✅" or "❌"))
+print("CancelInput: " .. (remotes.cancelInput and "✅" or "❌"))
 
 -- Helper: Parse minigame value dari string format "1,1,1"
 -- @param str string: Format "value1,value2,value3"
