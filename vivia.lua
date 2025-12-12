@@ -31,14 +31,12 @@ end
 
 -- List semua item di ReplicatedStorage untuk debugging
 local function listRemotes()
-    print("\n=== REMOTES AVAILABLE IN REPLICATED STORAGE ===")
+    addLog("--- Remotes Available ---")
     for _, child in pairs(ReplicatedStorage:GetChildren()) do
-        print("📁 " .. child.Name .. " (" .. child.ClassName .. ")")
-        if child:IsA("RemoteFunction") or child:IsA("RemoteEvent") then
-            print("   └─ Type: " .. child.ClassName)
-        end
+        local icon = (child:IsA("RemoteFunction") or child:IsA("RemoteEvent")) and "🔴" or "📁"
+        addLog(icon .. " " .. child.Name)
     end
-    print("==============================================\n")
+    addLog("------------------------")
 end
 
 -- Run debug listing
@@ -48,19 +46,19 @@ local function loadRemote(searchName)
     -- Cari exact match dulu
     local found = ReplicatedStorage:FindFirstChild(searchName)
     if found then
-        print("✅ Found remote: " .. searchName)
+        addLog("✅ Found: " .. searchName)
         return found
     end
     
     -- Cari partial match
     for _, child in pairs(ReplicatedStorage:GetChildren()) do
         if string.find(child.Name, searchName, 1, true) then
-            print("⚠️  Partial match for " .. searchName .. " -> Found: " .. child.Name)
+            addLog("⚠️  Partial match: " .. child.Name)
             return child
         end
     end
     
-    print("❌ Remote not found: " .. searchName)
+    addLog("❌ Not found: " .. searchName)
     return nil
 end
 
@@ -179,9 +177,39 @@ waitLabel.TextSize = 12
 waitLabel.TextXAlignment = Enum.TextXAlignment.Left
 waitLabel.Parent = mainFrame
 
+-- Log display untuk menampilkan debug info
+local logBox = Instance.new("TextBox")
+logBox.Size = UDim2.new(1, -20, 0, 80)
+logBox.Position = UDim2.new(0, 10, 0, 160)
+logBox.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+logBox.TextColor3 = Color3.fromRGB(100, 200, 100)
+logBox.Font = Enum.Font.Code
+logBox.TextSize = 11
+logBox.TextWrapped = true
+logBox.TextXAlignment = Enum.TextXAlignment.Left
+logBox.TextYAlignment = Enum.TextYAlignment.Top
+logBox.ReadOnly = true
+logBox.MultiLine = true
+logBox.ClearTextOnFocus = false
+logBox.Parent = mainFrame
+
+-- Helper untuk add log message
+local logMessages = {}
+local function addLog(message)
+    table.insert(logMessages, message)
+    -- Simpan hanya 10 message terakhir
+    if #logMessages > 10 then
+        table.remove(logMessages, 1)
+    end
+    logBox.Text = table.concat(logMessages, "\n")
+end
+
+addLog("[INIT] Script starting...")
+
+
 local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -20, 0, 50)
-statusLabel.Position = UDim2.new(0, 10, 0, 160)
+statusLabel.Size = UDim2.new(1, -20, 0, 30)
+statusLabel.Position = UDim2.new(0, 10, 0, 250)
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = "Status: Idle"
 statusLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
@@ -192,11 +220,11 @@ statusLabel.TextWrapped = true
 statusLabel.Parent = mainFrame
 
 -- Status awal - tampilkan remote status
-print("\n[BOLO] UI Loaded - Checking Remotes...")
-print("ChargeRod: " .. (remotes.chargeRod and "✅" or "❌"))
-print("MinigameStart: " .. (remotes.minigameStart and "✅" or "❌"))
-print("FishingCompleted: " .. (remotes.fishingCompleted and "✅" or "❌"))
-print("CancelInput: " .. (remotes.cancelInput and "✅" or "❌"))
+addLog("[LOAD] Checking remotes...")
+addLog("ChargeRod: " .. (remotes.chargeRod and "✅" or "❌"))
+addLog("MinigameStart: " .. (remotes.minigameStart and "✅" or "❌"))
+addLog("FishingCompleted: " .. (remotes.fishingCompleted and "✅" or "❌"))
+addLog("CancelInput: " .. (remotes.cancelInput and "✅" or "❌"))
 
 -- Helper: Parse minigame value dari string format "1,1,1"
 -- @param str string: Format "value1,value2,value3"
@@ -233,6 +261,7 @@ local loopCount = 0
 -- @param text string: Status text untuk ditampilkan
 local function setStatus(text)
     statusLabel.Text = "Status: " .. text
+    addLog(text)
 end
 
 -- Execute satu siklus fishing
