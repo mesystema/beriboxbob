@@ -1,10 +1,6 @@
 --[[
-    bolo.lua: Auto Fishing Loop Script (Mobile Friendly)
-    Profesional, modular, dan aman untuk Roblox Android.
-    - UI: Start/Stop, input value charge, minigame, global wait
-    - Looping: CancelFishingInput -> ChargeFishingRod -> RequestFishingMinigameStarted -> Wait -> FishingCompleted
-    - Praktik terbaik: camelCase, event-driven, tidak blocking main game
-    - Aman: Server-side validation, error handling, rate limiting
+    bolo_android.lua: Auto Fishing Loop Script - Android Compatible
+    Versi khusus untuk Roblox Android dengan compatibility terbaik
 ]]
 
 local Players = game:GetService("Players")
@@ -12,219 +8,194 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 
 -- Tunggu player GUI ready
-if not player:FindFirstChild("PlayerGui") then
-    player:WaitForChild("PlayerGui")
+local playerGui = player:FindFirstChild("PlayerGui")
+if not playerGui then
+    playerGui = player:WaitForChild("PlayerGui")
 end
 
--- UI Setup dulu sebelum fungsi lain
+-- ===== UI SETUP =====
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "BoloFishingUI"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 420, 0, 420)
-mainFrame.Position = UDim2.new(0, 40, 0, 80)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-mainFrame.BackgroundTransparency = 0.15
+mainFrame.Size = UDim2.new(0, 350, 0, 450)
+mainFrame.Position = UDim2.new(0.5, -175, 0.5, -225)
+mainFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.15)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
 mainFrame.Draggable = true
 mainFrame.Parent = screenGui
 
--- Log display untuk menampilkan debug info - BUAT DULU
-local logBox = Instance.new("TextBox")
-logBox.Size = UDim2.new(1, -20, 0, 100)
-logBox.Position = UDim2.new(0, 10, 0, 160)
-logBox.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-logBox.TextColor3 = Color3.fromRGB(100, 200, 100)
-logBox.Font = Enum.Font.Code
-logBox.TextSize = 11
-logBox.TextWrapped = true
-logBox.TextXAlignment = Enum.TextXAlignment.Left
-logBox.TextYAlignment = Enum.TextYAlignment.Top
-logBox.ReadOnly = true
-logBox.MultiLine = true
-logBox.ClearTextOnFocus = false
-logBox.Parent = mainFrame
+-- Title
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 30)
+titleLabel.Position = UDim2.new(0, 0, 0, 0)
+titleLabel.BackgroundColor3 = Color3.new(0.05, 0.05, 0.1)
+titleLabel.Text = "BOLO FISHING"
+titleLabel.TextColor3 = Color3.new(1, 1, 1)
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 16
+titleLabel.Parent = mainFrame
 
--- Helper untuk add log message - SEBELUM digunakan
-local logMessages = {}
-local function addLog(message)
-    table.insert(logMessages, message)
-    if #logMessages > 15 then
-        table.remove(logMessages, 1)
-    end
-    logBox.Text = table.concat(logMessages, "\n")
-end
-
-addLog("[INIT] Starting script...")
-
--- Konfigurasi Remote References
-local remotes = {}
-
--- Helper untuk split string
-local function splitString(str, delimiter)
-    local parts = {}
-    local pattern = "([^" .. delimiter .. "]+)"
-    for part in string.gmatch(str, pattern) do
-        table.insert(parts, part)
-    end
-    return parts
-end
-
--- List semua item di ReplicatedStorage untuk debugging
-local function listRemotes()
-    addLog("--- Available Remotes ---")
-    for _, child in pairs(ReplicatedStorage:GetChildren()) do
-        local icon = (child:IsA("RemoteFunction") or child:IsA("RemoteEvent")) and "🔴" or "📁"
-        addLog(icon .. " " .. child.Name)
-    end
-    addLog("------------------------")
-end
-
--- Run debug listing
-listRemotes()
-
-local function loadRemote(searchName)
-    -- Cari exact match dulu
-    local found = ReplicatedStorage:FindFirstChild(searchName)
-    if found then
-        addLog("✅ Found: " .. searchName)
-        return found
-    end
-    
-    -- Cari partial match
-    for _, child in pairs(ReplicatedStorage:GetChildren()) do
-        if string.find(child.Name, searchName, 1, true) then
-            addLog("⚠️  Partial: " .. child.Name)
-            return child
-        end
-    end
-    
-    addLog("❌ Not found: " .. searchName)
-    return nil
-end
-
--- Load remotes dengan safe checking
-remotes.chargeRod = loadRemote("ChargeFishingRod")
-remotes.minigameStart = loadRemote("RequestFishingMinigameStarted")
-remotes.fishingCompleted = loadRemote("FishingCompleted")
-remotes.cancelInput = loadRemote("CancelFishingInput")
-
+-- Start Button
 local startBtn = Instance.new("TextButton")
-startBtn.Size = UDim2.new(0, 80, 0, 36)
-startBtn.Position = UDim2.new(0, 10, 0, 10)
-startBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
-startBtn.Text = "Start"
-startBtn.TextColor3 = Color3.new(1,1,1)
-startBtn.Font = Enum.Font.SourceSansBold
-startBtn.TextSize = 20
+startBtn.Size = UDim2.new(0.45, 0, 0, 40)
+startBtn.Position = UDim2.new(0.05, 0, 0, 40)
+startBtn.BackgroundColor3 = Color3.new(0.2, 0.6, 0.2)
+startBtn.Text = "START"
+startBtn.TextColor3 = Color3.new(1, 1, 1)
+startBtn.Font = Enum.Font.GothamBold
+startBtn.TextSize = 14
 startBtn.Parent = mainFrame
 
+-- Stop Button
 local stopBtn = Instance.new("TextButton")
-stopBtn.Size = UDim2.new(0, 80, 0, 36)
-stopBtn.Position = UDim2.new(0, 110, 0, 10)
-stopBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 47)
-stopBtn.Text = "Stop"
-stopBtn.TextColor3 = Color3.new(1,1,1)
-stopBtn.Font = Enum.Font.SourceSansBold
-stopBtn.TextSize = 20
+stopBtn.Size = UDim2.new(0.45, 0, 0, 40)
+stopBtn.Position = UDim2.new(0.5, 0, 0, 40)
+stopBtn.BackgroundColor3 = Color3.new(0.7, 0.2, 0.2)
+stopBtn.Text = "STOP"
+stopBtn.TextColor3 = Color3.new(1, 1, 1)
+stopBtn.Font = Enum.Font.GothamBold
+stopBtn.TextSize = 14
 stopBtn.Parent = mainFrame
 
+-- Charge Input
+local chargeLabel = Instance.new("TextLabel")
+chargeLabel.Size = UDim2.new(1, -20, 0, 20)
+chargeLabel.Position = UDim2.new(0, 10, 0, 90)
+chargeLabel.BackgroundTransparency = 1
+chargeLabel.Text = "Charge Value:"
+chargeLabel.TextColor3 = Color3.new(1, 1, 1)
+chargeLabel.Font = Enum.Font.Gotham
+chargeLabel.TextSize = 12
+chargeLabel.TextXAlignment = Enum.TextXAlignment.Left
+chargeLabel.Parent = mainFrame
+
 local chargeBox = Instance.new("TextBox")
-chargeBox.Size = UDim2.new(0, 120, 0, 32)
-chargeBox.Position = UDim2.new(0, 10, 0, 60)
-chargeBox.BackgroundColor3 = Color3.fromRGB(35, 35, 60)
-chargeBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+chargeBox.Size = UDim2.new(1, -20, 0, 28)
+chargeBox.Position = UDim2.new(0, 10, 0, 112)
+chargeBox.BackgroundColor3 = Color3.new(0.15, 0.15, 0.25)
+chargeBox.TextColor3 = Color3.new(1, 1, 1)
 chargeBox.Font = Enum.Font.Code
-chargeBox.TextSize = 14
-chargeBox.PlaceholderText = "Charge Val"
+chargeBox.TextSize = 12
 chargeBox.Text = "1"
 chargeBox.ClearTextOnFocus = false
 chargeBox.Parent = mainFrame
 
+-- Minigame Input
+local minigameLabel = Instance.new("TextLabel")
+minigameLabel.Size = UDim2.new(1, -20, 0, 20)
+minigameLabel.Position = UDim2.new(0, 10, 0, 150)
+minigameLabel.BackgroundTransparency = 1
+minigameLabel.Text = "Minigame Values (comma sep):"
+minigameLabel.TextColor3 = Color3.new(1, 1, 1)
+minigameLabel.Font = Enum.Font.Gotham
+minigameLabel.TextSize = 12
+minigameLabel.TextXAlignment = Enum.TextXAlignment.Left
+minigameLabel.Parent = mainFrame
+
 local minigameBox = Instance.new("TextBox")
-minigameBox.Size = UDim2.new(0, 180, 0, 32)
-minigameBox.Position = UDim2.new(0, 140, 0, 60)
-minigameBox.BackgroundColor3 = Color3.fromRGB(35, 35, 60)
-minigameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+minigameBox.Size = UDim2.new(1, -20, 0, 28)
+minigameBox.Position = UDim2.new(0, 10, 0, 172)
+minigameBox.BackgroundColor3 = Color3.new(0.15, 0.15, 0.25)
+minigameBox.TextColor3 = Color3.new(1, 1, 1)
 minigameBox.Font = Enum.Font.Code
-minigameBox.TextSize = 14
-minigameBox.PlaceholderText = "Minigame (1,1,1)"
+minigameBox.TextSize = 12
 minigameBox.Text = "1,1,1"
 minigameBox.ClearTextOnFocus = false
 minigameBox.Parent = mainFrame
 
--- Wait Time Inputs
-local waitAfterCancelBox = Instance.new("TextBox")
-waitAfterCancelBox.Size = UDim2.new(0, 95, 0, 28)
-waitAfterCancelBox.Position = UDim2.new(0, 10, 0, 100)
-waitAfterCancelBox.BackgroundColor3 = Color3.fromRGB(35, 35, 60)
-waitAfterCancelBox.TextColor3 = Color3.fromRGB(255, 200, 0)
-waitAfterCancelBox.Font = Enum.Font.Code
-waitAfterCancelBox.TextSize = 12
-waitAfterCancelBox.PlaceholderText = "Wait Cancel"
-waitAfterCancelBox.Text = "0.1"
-waitAfterCancelBox.ClearTextOnFocus = false
-waitAfterCancelBox.Parent = mainFrame
-
-local waitAfterChargeBox = Instance.new("TextBox")
-waitAfterChargeBox.Size = UDim2.new(0, 95, 0, 28)
-waitAfterChargeBox.Position = UDim2.new(0, 115, 0, 100)
-waitAfterChargeBox.BackgroundColor3 = Color3.fromRGB(35, 35, 60)
-waitAfterChargeBox.TextColor3 = Color3.fromRGB(255, 200, 0)
-waitAfterChargeBox.Font = Enum.Font.Code
-waitAfterChargeBox.TextSize = 12
-waitAfterChargeBox.PlaceholderText = "Wait Charge"
-waitAfterChargeBox.Text = "0.2"
-waitAfterChargeBox.ClearTextOnFocus = false
-waitAfterChargeBox.Parent = mainFrame
-
-local waitAfterMinigameBox = Instance.new("TextBox")
-waitAfterMinigameBox.Size = UDim2.new(0, 95, 0, 28)
-waitAfterMinigameBox.Position = UDim2.new(0, 220, 0, 100)
-waitAfterMinigameBox.BackgroundColor3 = Color3.fromRGB(35, 35, 60)
-waitAfterMinigameBox.TextColor3 = Color3.fromRGB(255, 200, 0)
-waitAfterMinigameBox.Font = Enum.Font.Code
-waitAfterMinigameBox.TextSize = 12
-waitAfterMinigameBox.PlaceholderText = "Wait Minigame"
-waitAfterMinigameBox.Text = "0.2"
-waitAfterMinigameBox.ClearTextOnFocus = false
-waitAfterMinigameBox.Parent = mainFrame
-
--- Label untuk Wait Times
+-- Wait Times Section
 local waitLabel = Instance.new("TextLabel")
-waitLabel.Size = UDim2.new(1, -20, 0, 18)
-waitLabel.Position = UDim2.new(0, 10, 0, 138)
+waitLabel.Size = UDim2.new(1, -20, 0, 20)
+waitLabel.Position = UDim2.new(0, 10, 0, 210)
 waitLabel.BackgroundTransparency = 1
-waitLabel.Text = "Wait: Cancel | Charge | Minigame"
-waitLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
-waitLabel.Font = Enum.Font.Code
+waitLabel.Text = "Wait Times (seconds):"
+waitLabel.TextColor3 = Color3.new(1, 1, 0.5)
+waitLabel.Font = Enum.Font.Gotham
 waitLabel.TextSize = 12
 waitLabel.TextXAlignment = Enum.TextXAlignment.Left
 waitLabel.Parent = mainFrame
 
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -20, 0, 30)
-statusLabel.Position = UDim2.new(0, 10, 0, 270)
-statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "Status: Idle"
-statusLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
-statusLabel.Font = Enum.Font.Code
-statusLabel.TextSize = 14
-statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-statusLabel.TextWrapped = true
-statusLabel.Parent = mainFrame
+-- Wait Cancel
+local waitCancelLabel = Instance.new("TextLabel")
+waitCancelLabel.Size = UDim2.new(0.3, 0, 0, 18)
+waitCancelLabel.Position = UDim2.new(0, 10, 0, 235)
+waitCancelLabel.BackgroundTransparency = 1
+waitCancelLabel.Text = "Cancel:"
+waitCancelLabel.TextColor3 = Color3.new(0.8, 0.8, 0.8)
+waitCancelLabel.Font = Enum.Font.Gotham
+waitCancelLabel.TextSize = 11
+waitCancelLabel.TextXAlignment = Enum.TextXAlignment.Left
+waitCancelLabel.Parent = mainFrame
 
--- Log display untuk menampilkan debug info
+local waitCancelBox = Instance.new("TextBox")
+waitCancelBox.Size = UDim2.new(0.3, 0, 0, 22)
+waitCancelBox.Position = UDim2.new(0, 10, 0, 253)
+waitCancelBox.BackgroundColor3 = Color3.new(0.15, 0.15, 0.25)
+waitCancelBox.TextColor3 = Color3.new(1, 1, 1)
+waitCancelBox.Font = Enum.Font.Code
+waitCancelBox.TextSize = 11
+waitCancelBox.Text = "0.1"
+waitCancelBox.ClearTextOnFocus = false
+waitCancelBox.Parent = mainFrame
+
+-- Wait Charge
+local waitChargeLabel = Instance.new("TextLabel")
+waitChargeLabel.Size = UDim2.new(0.3, 0, 0, 18)
+waitChargeLabel.Position = UDim2.new(0.35, 0, 0, 235)
+waitChargeLabel.BackgroundTransparency = 1
+waitChargeLabel.Text = "Charge:"
+waitChargeLabel.TextColor3 = Color3.new(0.8, 0.8, 0.8)
+waitChargeLabel.Font = Enum.Font.Gotham
+waitChargeLabel.TextSize = 11
+waitChargeLabel.TextXAlignment = Enum.TextXAlignment.Left
+waitChargeLabel.Parent = mainFrame
+
+local waitChargeBox = Instance.new("TextBox")
+waitChargeBox.Size = UDim2.new(0.3, 0, 0, 22)
+waitChargeBox.Position = UDim2.new(0.35, 0, 0, 253)
+waitChargeBox.BackgroundColor3 = Color3.new(0.15, 0.15, 0.25)
+waitChargeBox.TextColor3 = Color3.new(1, 1, 1)
+waitChargeBox.Font = Enum.Font.Code
+waitChargeBox.TextSize = 11
+waitChargeBox.Text = "0.2"
+waitChargeBox.ClearTextOnFocus = false
+waitChargeBox.Parent = mainFrame
+
+-- Wait Minigame
+local waitMinigameLabel = Instance.new("TextLabel")
+waitMinigameLabel.Size = UDim2.new(0.3, 0, 0, 18)
+waitMinigameLabel.Position = UDim2.new(0.68, 0, 0, 235)
+waitMinigameLabel.BackgroundTransparency = 1
+waitMinigameLabel.Text = "Minigame:"
+waitMinigameLabel.TextColor3 = Color3.new(0.8, 0.8, 0.8)
+waitMinigameLabel.Font = Enum.Font.Gotham
+waitMinigameLabel.TextSize = 11
+waitMinigameLabel.TextXAlignment = Enum.TextXAlignment.Left
+waitMinigameLabel.Parent = mainFrame
+
+local waitMinigameBox = Instance.new("TextBox")
+waitMinigameBox.Size = UDim2.new(0.3, 0, 0, 22)
+waitMinigameBox.Position = UDim2.new(0.68, 0, 0, 253)
+waitMinigameBox.BackgroundColor3 = Color3.new(0.15, 0.15, 0.25)
+waitMinigameBox.TextColor3 = Color3.new(1, 1, 1)
+waitMinigameBox.Font = Enum.Font.Code
+waitMinigameBox.TextSize = 11
+waitMinigameBox.Text = "0.2"
+waitMinigameBox.ClearTextOnFocus = false
+waitMinigameBox.Parent = mainFrame
+
+-- Log Box
 local logBox = Instance.new("TextBox")
-logBox.Size = UDim2.new(1, -20, 0, 80)
-logBox.Position = UDim2.new(0, 10, 0, 160)
-logBox.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-logBox.TextColor3 = Color3.fromRGB(100, 200, 100)
+logBox.Size = UDim2.new(1, -20, 0, 100)
+logBox.Position = UDim2.new(0, 10, 0, 285)
+logBox.BackgroundColor3 = Color3.new(0.05, 0.05, 0.1)
+logBox.TextColor3 = Color3.new(0.5, 1, 0.5)
 logBox.Font = Enum.Font.Code
-logBox.TextSize = 11
+logBox.TextSize = 10
 logBox.TextWrapped = true
 logBox.TextXAlignment = Enum.TextXAlignment.Left
 logBox.TextYAlignment = Enum.TextYAlignment.Top
@@ -233,203 +204,154 @@ logBox.MultiLine = true
 logBox.ClearTextOnFocus = false
 logBox.Parent = mainFrame
 
--- Helper untuk add log message
+-- Status Label
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, -20, 0, 20)
+statusLabel.Position = UDim2.new(0, 10, 0, 390)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: Ready"
+statusLabel.TextColor3 = Color3.new(0.5, 1, 0.5)
+statusLabel.Font = Enum.Font.Code
+statusLabel.TextSize = 11
+statusLabel.Parent = mainFrame
+
+-- ===== HELPER FUNCTIONS =====
 local logMessages = {}
-local function addLog(message)
-    table.insert(logMessages, message)
-    -- Simpan hanya 10 message terakhir
-    if #logMessages > 10 then
+local function addLog(msg)
+    table.insert(logMessages, msg)
+    if #logMessages > 12 then
         table.remove(logMessages, 1)
     end
     logBox.Text = table.concat(logMessages, "\n")
 end
 
-addLog("[INIT] Script starting...")
+local function setStatus(msg)
+    statusLabel.Text = "Status: " .. msg
+    addLog("[" .. msg .. "]")
+end
 
+-- ===== REMOTE LOADING =====
+local remotes = {}
 
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -20, 0, 30)
-statusLabel.Position = UDim2.new(0, 10, 0, 250)
-statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "Status: Idle"
-statusLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
-statusLabel.Font = Enum.Font.Code
-statusLabel.TextSize = 14
-statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-statusLabel.TextWrapped = true
-statusLabel.Parent = mainFrame
+-- Find remotes
+for _, child in pairs(ReplicatedStorage:GetChildren()) do
+    if string.find(child.Name, "ChargeFishingRod") then
+        remotes.chargeRod = child
+        addLog("Found: " .. child.Name)
+    elseif string.find(child.Name, "RequestFishingMinigameStarted") then
+        remotes.minigameStart = child
+        addLog("Found: " .. child.Name)
+    elseif string.find(child.Name, "FishingCompleted") then
+        remotes.fishingCompleted = child
+        addLog("Found: " .. child.Name)
+    elseif string.find(child.Name, "CancelFishingInput") then
+        remotes.cancelInput = child
+        addLog("Found: " .. child.Name)
+    end
+end
 
--- Status awal - tampilkan remote status
-addLog("[LOAD] Checking remotes...")
-addLog("ChargeRod: " .. (remotes.chargeRod and "✅" or "❌"))
-addLog("MinigameStart: " .. (remotes.minigameStart and "✅" or "❌"))
-addLog("FishingCompleted: " .. (remotes.fishingCompleted and "✅" or "❌"))
-addLog("CancelInput: " .. (remotes.cancelInput and "✅" or "❌"))
+-- Check status
+addLog("---")
+if remotes.chargeRod then addLog("ChargeRod: OK") else addLog("ChargeRod: MISS") end
+if remotes.minigameStart then addLog("Minigame: OK") else addLog("Minigame: MISS") end
+if remotes.fishingCompleted then addLog("Completed: OK") else addLog("Completed: MISS") end
+if remotes.cancelInput then addLog("CancelInput: OK") else addLog("CancelInput: MISS") end
 
--- Helper: Parse minigame value dari string format "1,1,1"
--- @param str string: Format "value1,value2,value3"
--- @return table: Array dari parsed values
+-- ===== PARSING FUNCTIONS =====
 local function parseMinigame(str)
     local args = {}
-    for arg in string.gmatch(str, "([^,]+)") do
-        arg = arg:gsub("^%s*(.-)%s*$", "%1")
-        local n = tonumber(arg)
-        table.insert(args, n or arg)
+    local pos = 1
+    while true do
+        local comma = string.find(str, ",", pos)
+        if not comma then
+            local val = string.sub(str, pos)
+            val = string.gsub(val, "^%s+", "")
+            val = string.gsub(val, "%s+$", "")
+            if val ~= "" then
+                table.insert(args, tonumber(val) or val)
+            end
+            break
+        else
+            local val = string.sub(str, pos, comma - 1)
+            val = string.gsub(val, "^%s+", "")
+            val = string.gsub(val, "%s+$", "")
+            if val ~= "" then
+                table.insert(args, tonumber(val) or val)
+            end
+            pos = comma + 1
+        end
     end
     return args
 end
 
--- Helper: Parse charge value (single number)
--- @param str string: Format "1"
--- @return number: Parsed value atau default 1
-local function parseCharge(str)
-    return tonumber(str) or 1
+local function parseNum(str, default)
+    local n = tonumber(str)
+    return n and math.max(0.01, n) or (default or 0.1)
 end
 
--- Helper: Parse wait time
--- @param str string: Detik untuk menunggu
--- @return number: Parsed value atau default 0.1
-local function parseWaitTime(str, default)
-    return math.max(0.01, tonumber(str) or (default or 0.1))
-end
-
--- Looping logic
+-- ===== LOOP LOGIC =====
 local isLooping = false
-local errorCount = 0
 local loopCount = 0
 
--- @param text string: Status text untuk ditampilkan
-local function setStatus(text)
-    statusLabel.Text = "Status: " .. text
-    addLog(text)
-end
-
--- Execute satu siklus fishing
--- @return boolean: true jika sukses, false jika error
-local function executeFishingCycle()
-    local success = true
-    
-    -- 1. CancelFishingInput (optional)
-    if remotes.cancelInput then
-        pcall(function()
-            remotes.cancelInput:FireServer()
-        end)
-    end
-    
-    local waitCancel = parseWaitTime(waitAfterCancelBox.Text, 0.1)
-    task.wait(waitCancel)
-    
-    -- 2. ChargeFishingRod
-    local chargeVal = parseCharge(chargeBox.Text)
-    local chargeTimestamp = tick()
-    
-    if remotes.chargeRod then
-        local ok = pcall(function()
-            local result = remotes.chargeRod:InvokeServer(chargeTimestamp)
-            setStatus("Charging... (" .. chargeVal .. ")")
-        end)
-        if not ok then
-            success = false
-            errorCount = errorCount + 1
-        end
-    end
-    
-    local waitCharge = parseWaitTime(waitAfterChargeBox.Text, 0.2)
-    task.wait(waitCharge)
-    
-    -- 3. RequestFishingMinigameStarted
-    local minigameArgs = parseMinigame(minigameBox.Text)
-    local minigameTimestamp = tick()
-    
-    if remotes.minigameStart then
-        local ok = pcall(function()
-            -- Tambah timestamp sebagai argument terakhir
-            table.insert(minigameArgs, minigameTimestamp)
-            local result = remotes.minigameStart:InvokeServer(unpack(minigameArgs))
-            setStatus("Minigame Started...")
-        end)
-        if not ok then
-            success = false
-            errorCount = errorCount + 1
-        end
-    end
-    
-    local waitMinigame = parseWaitTime(waitAfterMinigameBox.Text, 0.2)
-    task.wait(waitMinigame)
-    
-    -- 4. FishingCompleted
-    if remotes.fishingCompleted then
-        pcall(function()
-            remotes.fishingCompleted:FireServer()
-            setStatus("Completed! Loop: " .. loopCount)
-        end)
-    end
-    
-    loopCount = loopCount + 1
-    
-    -- Reset error count jika cycle sukses
-    if success then
-        errorCount = 0
-    end
-    
-    return success
-end
-
--- Main loop function
-local function doLoop()
+local function executeLoop()
     loopCount = 0
-    errorCount = 0
-    setStatus("Looping... (0)")
-    
     while isLooping do
-        -- Stop jika error berlebihan
-        if errorCount > 5 then
-            setStatus("Error limit reached! Stopping...")
-            isLooping = false
-            break
+        -- 1. Cancel
+        if remotes.cancelInput then
+            pcall(function()
+                remotes.cancelInput:FireServer()
+            end)
+        end
+        wait(parseNum(waitCancelBox.Text, 0.1))
+        
+        -- 2. Charge
+        if remotes.chargeRod then
+            pcall(function()
+                remotes.chargeRod:InvokeServer(tick())
+            end)
+        end
+        wait(parseNum(waitChargeBox.Text, 0.2))
+        
+        -- 3. Minigame
+        if remotes.minigameStart then
+            pcall(function()
+                local args = parseMinigame(minigameBox.Text)
+                table.insert(args, tick())
+                remotes.minigameStart:InvokeServer(unpack(args))
+            end)
+        end
+        wait(parseNum(waitMinigameBox.Text, 0.2))
+        
+        -- 4. Completed
+        if remotes.fishingCompleted then
+            pcall(function()
+                remotes.fishingCompleted:FireServer()
+            end)
         end
         
-        local ok = pcall(executeFishingCycle)
-        if not ok then
-            errorCount = errorCount + 1
-            setStatus("Error! (" .. errorCount .. "/5)")
-            task.wait(0.5)
-        else
-            task.wait(0.1) -- Minimal delay antar cycle
-        end
+        loopCount = loopCount + 1
+        setStatus("Running [" .. loopCount .. "]")
+        wait(0.1)
     end
-    
-    setStatus("Idle")
 end
 
+-- ===== BUTTON EVENTS =====
 startBtn.MouseButton1Click:Connect(function()
     if not isLooping then
-        -- Validasi remote ada sebelum start
         if not remotes.chargeRod or not remotes.minigameStart or not remotes.fishingCompleted then
-            setStatus("Error: Remotes not found!")
+            setStatus("ERROR: Remotes not found!")
             return
         end
         isLooping = true
-        setStatus("Starting...")
-        task.spawn(doLoop)
+        setStatus("RUNNING")
+        spawn(executeLoop)
     end
 end)
 
 stopBtn.MouseButton1Click:Connect(function()
     isLooping = false
-    setStatus("Stopping...")
+    loopCount = 0
+    setStatus("STOPPED")
 end)
 
--- Cleanup on player leaving
-local humanoidPath = player:FindFirstChild("Character")
-if humanoidPath then
-    local humanoid = humanoidPath:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid.Died:Connect(function()
-            isLooping = false
-        end)
-    end
-end
-
--- Inisialisasi status
-setStatus("Idle")
+addLog("Script Ready!")
