@@ -64,10 +64,11 @@ function DebugTool:scanRemotes()
     self:updateRemoteListUI()
 end
 
--- Scan semua LocalScript di PlayerGui dan Backpack
+
+-- Scan semua LocalScript di PlayerGui, Backpack, PlayerScripts, dan descendants player
 function DebugTool:scanLocalScripts()
     self.localScriptList = {}
-    self:addLog("=== Scanning LocalScript (PlayerGui & Backpack)... ===")
+    self:addLog("=== Scanning LocalScript (PlayerGui, Backpack, PlayerScripts, descendants)... ===")
     local found = 0
     local function collectScripts(parent)
         for _, obj in ipairs(parent:GetDescendants()) do
@@ -76,11 +77,20 @@ function DebugTool:scanLocalScripts()
                 table.insert(self.localScriptList, obj)
             end
         end
+        -- Juga cek parent itu sendiri
+        if parent:IsA("LocalScript") then
+            found = found + 1
+            table.insert(self.localScriptList, parent)
+        end
     end
     local playerGui = player:FindFirstChild("PlayerGui")
     local backpack = player:FindFirstChild("Backpack")
+    local playerScripts = player:FindFirstChild("PlayerScripts")
     if playerGui then collectScripts(playerGui) end
     if backpack then collectScripts(backpack) end
+    if playerScripts then collectScripts(playerScripts) end
+    -- Cek descendants langsung dari player (misal: StarterGear, StarterPack, dsb)
+    collectScripts(player)
     if found == 0 then
         self:addLog("Tidak ditemukan LocalScript.")
     else
@@ -384,7 +394,8 @@ function DebugTool:updateLocalScriptListUI()
     localScriptFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(#self.localScriptList*28, localScriptFrame.AbsoluteSize.Y))
 end
 
--- Panel untuk melihat info LocalScript
+
+-- Panel untuk melihat info LocalScript (scrollable jika panjang)
 function DebugTool:openLocalScriptPanel(scriptObj)
     -- Hapus panel lama jika ada
     if self.ui.testPanel then
@@ -393,8 +404,8 @@ function DebugTool:openLocalScriptPanel(scriptObj)
     end
 
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 320, 0, 120)
-    panel.Position = UDim2.new(0.5, -160, 0.5, -60)
+    panel.Size = UDim2.new(0, 320, 0, 180)
+    panel.Position = UDim2.new(0.5, -160, 0.5, -90)
     panel.AnchorPoint = Vector2.new(0, 0)
     panel.BackgroundColor3 = Color3.fromRGB(30, 20, 40)
     panel.BackgroundTransparency = 0.05
@@ -427,9 +438,19 @@ function DebugTool:openLocalScriptPanel(scriptObj)
         self.ui.testPanel = nil
     end)
 
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Size = UDim2.new(1, -40, 1, -50)
+    scrollFrame.Position = UDim2.new(0, 20, 0, 45)
+    scrollFrame.BackgroundColor3 = Color3.fromRGB(40, 30, 50)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.BorderSizePixel = 0
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 120)
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.Parent = panel
+
     local infoLabel = Instance.new("TextLabel")
-    infoLabel.Size = UDim2.new(1, -40, 0, 60)
-    infoLabel.Position = UDim2.new(0, 20, 0, 50)
+    infoLabel.Size = UDim2.new(1, 0, 0, 120)
+    infoLabel.Position = UDim2.new(0, 0, 0, 0)
     infoLabel.BackgroundTransparency = 1
     infoLabel.Text = "Parent: " .. (scriptObj.Parent and scriptObj.Parent:GetFullName() or "-") .. "\nClass: " .. scriptObj.ClassName
     infoLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
@@ -437,7 +458,13 @@ function DebugTool:openLocalScriptPanel(scriptObj)
     infoLabel.TextSize = 15
     infoLabel.TextXAlignment = Enum.TextXAlignment.Left
     infoLabel.TextWrapped = true
-    infoLabel.Parent = panel
+    infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+    infoLabel.Parent = scrollFrame
+
+    -- Auto adjust canvas size if infoLabel is longer
+    infoLabel:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, infoLabel.AbsoluteSize.Y)
+    end)
 end
 
 -- Panel untuk mengetes RemoteEvent/RemoteFunction
