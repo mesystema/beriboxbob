@@ -1,38 +1,41 @@
 --[[
-    DebugToolUI: Remote Scanner & Source Viewer Profesional
-    REVISI: Peningkatan Responsivitas UI dan Skala Mobile-Friendly.
---]]
+    DebugToolUI: Floating & Minimize-able Roblox Remote Scanner & Tester
+    Profesional, mobile-first, efisien, dan tidak blocking UI utama.
+    - UI dapat di-minimize/maximize (floating, draggable)
+    - Tidak menghalangi gameplay utama (posisi bisa diubah, minimize)
+    - Praktik terbaik: camelCase, modular, komentar jelas
+    - Untuk client-side debugging RemoteEvent/RemoteFunction
+]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
-local PlayerGui = player:WaitForChild("PlayerGui")
 
 local DebugTool = {}
 DebugTool.log = {}
 DebugTool.isLogging = false
-DebugTool.remoteList = {}
-DebugTool.scriptsList = {}
+DebugTool.connections = {}
 DebugTool.ui = {}
-DebugTool.activePanel = nil -- Melacak panel yang sedang dibuka
+DebugTool.remoteList = {}
+DebugTool.localScriptList = {}
+DebugTool.currentMode = "remote" -- "remote" or "localscript"
 
--- === UTILITY FUNCTIONS ===
-
+-- Utility: Serialize data (untuk argumen)
 function DebugTool:serializeData(data, depth)
     depth = depth or 0
     if depth > 2 then return "<Max Depth>" end
     if typeof(data) == "table" then
         local str = "{"
         for k, v in pairs(data) do
-            local keyStr = (typeof(k) == "string" and ("'" .. k .. "'") or tostring(k))
-            str = str .. keyStr .. ": " .. self:serializeData(v, depth + 1) .. ", "
+            str = str .. tostring(k) .. "=" .. self:serializeData(v, depth + 1) .. ", "
         end
-        return str:sub(1, -3) .. "}"
+        return str .. "}"
     else
         return tostring(data)
     end
 end
 
+-- Tambahkan log dan update UI
 function DebugTool:addLog(message)
     table.insert(self.log, 1, message)
     if #self.log > 50 then
@@ -41,30 +44,11 @@ function DebugTool:addLog(message)
     self:updateLogUI()
 end
 
-local function parseArgs(str)
-    local args = {}
-    for arg in string.gmatch(str, "([^,]+)") do
-        arg = arg:gsub("^%s*(.-)%s*$", "%1") -- trim
-        if tonumber(arg) then
-            table.insert(args, tonumber(arg))
-        elseif arg == "true" then
-            table.insert(args, true)
-        elseif arg == "false" then
-            table.insert(args, false)
-        elseif arg:match("^'.*'$") or arg:match('^".*"$') then
-            table.insert(args, arg:sub(2, -2))
-        else
-            table.insert(args, arg)
-        end
-    end
-    return args
-end
 
--- === SCANNING LOGIC ===
-
+-- Scan semua RemoteEvent/RemoteFunction di ReplicatedStorage
 function DebugTool:scanRemotes()
     self.remoteList = {}
-    self:addLog("=== Scanning Remotes... ===")
+    self:addLog("=== Scanning ReplicatedStorage... ===")
     local found = 0
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
         if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
@@ -72,54 +56,52 @@ function DebugTool:scanRemotes()
             table.insert(self.remoteList, obj)
         end
     end
-    self:addLog("Remote ditemukan: " .. found)
+    if found == 0 then
+        self:addLog("Tidak ditemukan RemoteEvent/RemoteFunction.")
+    else
+        self:addLog("Total ditemukan: " .. found)
+    end
     self:updateRemoteListUI()
 end
 
-function DebugTool:scanScripts()
-    self.scriptsList = {}
-    local locations = {
-        PlayerGui,
-        player:WaitForChild("PlayerScripts"),
-        ReplicatedStorage 
-    }
-    self:addLog("=== Scanning Client Scripts... ===")
+-- Scan semua LocalScript di PlayerGui dan Backpack
+function DebugTool:scanLocalScripts()
+    self.localScriptList = {}
+    self:addLog("=== Scanning LocalScript (PlayerGui & Backpack)... ===")
     local found = 0
-    
-    local function findScripts(parent)
-        for _, obj in ipairs(parent:GetChildren()) do
-            if obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
+    local function collectScripts(parent)
+        for _, obj in ipairs(parent:GetDescendants()) do
+            if obj:IsA("LocalScript") then
                 found = found + 1
-                table.insert(self.scriptsList, obj)
-            end
-            if obj:IsA("Folder") or obj:IsA("ScreenGui") or obj:IsA("Frame") or obj:IsA("Model") then
-                findScripts(obj)
+                table.insert(self.localScriptList, obj)
             end
         end
     end
-
-    for _, loc in ipairs(locations) do
-        findScripts(loc)
+    local playerGui = player:FindFirstChild("PlayerGui")
+    local backpack = player:FindFirstChild("Backpack")
+    if playerGui then collectScripts(playerGui) end
+    if backpack then collectScripts(backpack) end
+    if found == 0 then
+        self:addLog("Tidak ditemukan LocalScript.")
+    else
+        self:addLog("Total LocalScript: " .. found)
     end
-    
-    self:addLog("Skrip Klien ditemukan: " .. found)
-    self:updateScriptsListUI()
+    self:updateLocalScriptListUI()
 end
 
--- === UI CREATION & HANDLERS ===
 
+-- UI: Buat tampilan utama (floating, draggable, minimize-able, mode switch)
 function DebugTool:createUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "DebugToolUI"
     screenGui.ResetOnSpawn = false
     screenGui.IgnoreGuiInset = true
-    screenGui.Parent = PlayerGui
+    screenGui.Parent = player:WaitForChild("PlayerGui")
 
-    -- Main frame (Skala responsif, sekitar 30% lebar layar, minimal 320px)
+    -- Floating main frame
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0.3, 0, 0, 500) -- Skala Lebar, Tinggi Tetap untuk kepadatan
-    mainFrame.MinSize = Vector2.new(320, 500) -- Ukuran minimal
-    mainFrame.Position = UDim2.new(0, 10, 0, 80)
+    mainFrame.Size = UDim2.new(0, 340, 0, 340)
+    mainFrame.Position = UDim2.new(0, 40, 0, 80)
     mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     mainFrame.BackgroundTransparency = 0.15
     mainFrame.BorderSizePixel = 0
@@ -127,7 +109,7 @@ function DebugTool:createUI()
     mainFrame.Draggable = true
     mainFrame.Parent = screenGui
 
-    -- Minimize/Restore, Start/Stop Buttons... (Tidak berubah)
+    -- Minimize button
     local minimizeBtn = Instance.new("TextButton")
     minimizeBtn.Size = UDim2.new(0, 32, 0, 32)
     minimizeBtn.Position = UDim2.new(1, -38, 0, 6)
@@ -138,6 +120,7 @@ function DebugTool:createUI()
     minimizeBtn.TextSize = 22
     minimizeBtn.Parent = mainFrame
 
+    -- Restore button (hidden by default)
     local restoreBtn = Instance.new("TextButton")
     restoreBtn.Size = UDim2.new(0, 48, 0, 32)
     restoreBtn.Position = UDim2.new(0, 10, 0, 10)
@@ -148,6 +131,17 @@ function DebugTool:createUI()
     restoreBtn.TextSize = 18
     restoreBtn.Visible = false
     restoreBtn.Parent = screenGui
+
+    -- Mode switcher
+    local modeSwitchBtn = Instance.new("TextButton")
+    modeSwitchBtn.Size = UDim2.new(0, 120, 0, 32)
+    modeSwitchBtn.Position = UDim2.new(0, 200, 0, 10)
+    modeSwitchBtn.BackgroundColor3 = Color3.fromRGB(80, 120, 200)
+    modeSwitchBtn.Text = "Mode: Remote"
+    modeSwitchBtn.TextColor3 = Color3.new(1,1,1)
+    modeSwitchBtn.Font = Enum.Font.SourceSansBold
+    modeSwitchBtn.TextSize = 16
+    modeSwitchBtn.Parent = mainFrame
 
     local startBtn = Instance.new("TextButton")
     startBtn.Size = UDim2.new(0, 80, 0, 36)
@@ -181,7 +175,7 @@ function DebugTool:createUI()
     logLabel.Parent = mainFrame
 
     local logFrame = Instance.new("ScrollingFrame")
-    logFrame.Size = UDim2.new(1, -20, 0.3, -70)
+    logFrame.Size = UDim2.new(1, -20, 0.5, -70)
     logFrame.Position = UDim2.new(0, 10, 0, 90)
     logFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     logFrame.BackgroundTransparency = 0.2
@@ -189,7 +183,7 @@ function DebugTool:createUI()
     logFrame.CanvasSize = UDim2.new(0, 0, 0, 1000)
     logFrame.ScrollBarThickness = 6
     logFrame.Parent = mainFrame
-    
+
     local logTemplate = Instance.new("TextLabel")
     logTemplate.Size = UDim2.new(1, 0, 0, 22)
     logTemplate.BackgroundTransparency = 1
@@ -200,66 +194,49 @@ function DebugTool:createUI()
     logTemplate.ClipsDescendants = true
     logTemplate.Visible = false
     logTemplate.Parent = logFrame
-    
-    -- Tabs for Remote/Scripts
-    local tabFrame = Instance.new("Frame")
-    tabFrame.Size = UDim2.new(1, -20, 0, 30)
-    tabFrame.Position = UDim2.new(0, 10, 0.3, 70)
-    tabFrame.BackgroundTransparency = 1
-    tabFrame.Parent = mainFrame
-    
-    local remoteTabBtn = Instance.new("TextButton")
-    remoteTabBtn.Size = UDim2.new(0.5, -5, 1, 0)
-    remoteTabBtn.Position = UDim2.new(0, 0, 0, 0)
-    remoteTabBtn.Text = "Remotes"
-    remoteTabBtn.Font = Enum.Font.SourceSansBold
-    remoteTabBtn.TextSize = 18
-    remoteTabBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-    remoteTabBtn.Parent = tabFrame
 
-    local scriptTabBtn = Instance.new("TextButton")
-    scriptTabBtn.Size = UDim2.new(0.5, -5, 1, 0)
-    scriptTabBtn.Position = UDim2.new(0.5, 5, 0, 0)
-    scriptTabBtn.Text = "Scripts"
-    scriptTabBtn.Font = Enum.Font.SourceSansBold
-    scriptTabBtn.TextSize = 18
-    scriptTabBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-    scriptTabBtn.Parent = tabFrame
-
-    -- Container Frame for Lists
-    local listContainer = Instance.new("Frame")
-    listContainer.Size = UDim2.new(1, -20, 0.5, -70)
-    listContainer.Position = UDim2.new(0, 10, 0.3, 100)
-    listContainer.BackgroundTransparency = 1
-    listContainer.Parent = mainFrame
-    
     -- Remote List Frame
     local remoteFrame = Instance.new("ScrollingFrame")
-    remoteFrame.Name = "RemoteList"
-    remoteFrame.Size = UDim2.new(1, 0, 1, 0)
+    remoteFrame.Size = UDim2.new(1, -20, 0.5, -40)
+    remoteFrame.Position = UDim2.new(0, 10, 0.5, 20)
     remoteFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
     remoteFrame.BackgroundTransparency = 0.1
     remoteFrame.BorderSizePixel = 0
     remoteFrame.CanvasSize = UDim2.new(0, 0, 0, 1000)
     remoteFrame.ScrollBarThickness = 6
-    remoteFrame.Parent = listContainer
+    remoteFrame.Parent = mainFrame
 
-    -- Script List Frame
-    local scriptsFrame = remoteFrame:Clone()
-    scriptsFrame.Name = "ScriptsList"
-    scriptsFrame.BackgroundColor3 = Color3.fromRGB(50, 60, 50)
-    scriptsFrame.Visible = false
-    scriptsFrame.Parent = listContainer
+    local remoteTemplate = Instance.new("TextButton")
+    remoteTemplate.Size = UDim2.new(1, 0, 0, 26)
+    remoteTemplate.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+    remoteTemplate.TextColor3 = Color3.fromRGB(255, 255, 255)
+    remoteTemplate.Font = Enum.Font.Code
+    remoteTemplate.TextSize = 15
+    remoteTemplate.TextXAlignment = Enum.TextXAlignment.Left
+    remoteTemplate.Visible = false
+    remoteTemplate.Parent = remoteFrame
 
-    local listTemplate = Instance.new("TextButton")
-    listTemplate.Size = UDim2.new(1, 0, 0, 26)
-    listTemplate.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
-    listTemplate.TextColor3 = Color3.fromRGB(255, 255, 255)
-    listTemplate.Font = Enum.Font.Code
-    listTemplate.TextSize = 15
-    listTemplate.TextXAlignment = Enum.TextXAlignment.Left
-    listTemplate.Visible = false
-    listTemplate.Parent = listContainer 
+    -- LocalScript List Frame
+    local localScriptFrame = Instance.new("ScrollingFrame")
+    localScriptFrame.Size = UDim2.new(1, -20, 0.5, -40)
+    localScriptFrame.Position = UDim2.new(0, 10, 0.5, 20)
+    localScriptFrame.BackgroundColor3 = Color3.fromRGB(60, 50, 50)
+    localScriptFrame.BackgroundTransparency = 0.1
+    localScriptFrame.BorderSizePixel = 0
+    localScriptFrame.CanvasSize = UDim2.new(0, 0, 0, 1000)
+    localScriptFrame.ScrollBarThickness = 6
+    localScriptFrame.Visible = false
+    localScriptFrame.Parent = mainFrame
+
+    local localScriptTemplate = Instance.new("TextButton")
+    localScriptTemplate.Size = UDim2.new(1, 0, 0, 26)
+    localScriptTemplate.BackgroundColor3 = Color3.fromRGB(90, 70, 70)
+    localScriptTemplate.TextColor3 = Color3.fromRGB(255, 255, 255)
+    localScriptTemplate.Font = Enum.Font.Code
+    localScriptTemplate.TextSize = 15
+    localScriptTemplate.TextXAlignment = Enum.TextXAlignment.Left
+    localScriptTemplate.Visible = false
+    localScriptTemplate.Parent = localScriptFrame
 
     self.ui = {
         screenGui = screenGui,
@@ -271,46 +248,55 @@ function DebugTool:createUI()
         logFrame = logFrame,
         logTemplate = logTemplate,
         remoteFrame = remoteFrame,
-        scriptsFrame = scriptsFrame,
-        listTemplate = listTemplate,
-        remoteTabBtn = remoteTabBtn,
-        scriptTabBtn = scriptTabBtn,
+        remoteTemplate = remoteTemplate,
+        localScriptFrame = localScriptFrame,
+        localScriptTemplate = localScriptTemplate,
+        modeSwitchBtn = modeSwitchBtn
     }
 
-    local function switchTab(tabName)
-        if tabName == "Remotes" then
-            remoteFrame.Visible = true
-            scriptsFrame.Visible = false
-            remoteTabBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-            scriptTabBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-        elseif tabName == "Scripts" then
-            remoteFrame.Visible = false
-            scriptsFrame.Visible = true
-            remoteTabBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-            scriptTabBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-        end
-    end
-
-    remoteTabBtn.MouseButton1Click:Connect(function() switchTab("Remotes") end)
-    scriptTabBtn.MouseButton1Click:Connect(function() switchTab("Scripts") end)
-
+    -- Minimize/restore logic
     minimizeBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = false
         restoreBtn.Visible = true
-        if self.activePanel then self.activePanel.Visible = false end
     end)
     restoreBtn.MouseButton1Click:Connect(function()
         mainFrame.Visible = true
         restoreBtn.Visible = false
-        if self.activePanel then self.activePanel.Visible = true end
     end)
 
+    -- Mode switch logic
+    modeSwitchBtn.MouseButton1Click:Connect(function()
+        if self.currentMode == "remote" then
+            self.currentMode = "localscript"
+            modeSwitchBtn.Text = "Mode: LocalScript"
+            remoteFrame.Visible = false
+            localScriptFrame.Visible = true
+            self:addLog("Beralih ke mode LocalScript viewer.")
+            if self.isLogging then
+                self:scanLocalScripts()
+            end
+        else
+            self.currentMode = "remote"
+            modeSwitchBtn.Text = "Mode: Remote"
+            remoteFrame.Visible = true
+            localScriptFrame.Visible = false
+            self:addLog("Beralih ke mode Remote scanner.")
+            if self.isLogging then
+                self:scanRemotes()
+            end
+        end
+    end)
+
+    -- Event handler
     startBtn.MouseButton1Click:Connect(function()
         if not self.isLogging then
             self.isLogging = true
             self:addLog("Scan & test mode dimulai...")
-            self:scanRemotes()
-            self:scanScripts()
+            if self.currentMode == "remote" then
+                self:scanRemotes()
+            else
+                self:scanLocalScripts()
+            end
         else
             self:addLog("Sudah dalam mode logging.")
         end
@@ -320,78 +306,158 @@ function DebugTool:createUI()
             self.isLogging = false
             self:addLog("Logging dihentikan.")
             self:updateRemoteListUI()
-            self:updateScriptsListUI()
-            if self.activePanel then self.activePanel:Destroy(); self.activePanel = nil end
+            self:updateLocalScriptListUI()
         else
             self:addLog("Tidak sedang logging.")
         end
     end)
 end
 
--- === UI UPDATES ===
-
+-- Update tampilan log di UI
 function DebugTool:updateLogUI()
     local logFrame = self.ui.logFrame
-    local template = self.ui.logTemplate
     for _, child in ipairs(logFrame:GetChildren()) do
-        if child:IsA("TextLabel") and child ~= template then child:Destroy() end
+        if child:IsA("TextLabel") and child ~= self.ui.logTemplate then
+            child:Destroy()
+        end
     end
     for i, msg in ipairs(self.log) do
-        local label = template:Clone()
+        local label = self.ui.logTemplate:Clone()
         label.Text = msg
         label.Position = UDim2.new(0, 0, 0, (i-1)*22)
         label.Visible = true
         label.Parent = logFrame
     end
     logFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(#self.log*22, logFrame.AbsoluteSize.Y))
-    logFrame.CanvasPosition = Vector2.new(0, 0)
 end
 
-local function updateList(frame, list, handler)
-    local template = DebugTool.ui.listTemplate
-    for _, child in ipairs(frame:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
+
+-- Update daftar remote di UI
+function DebugTool:updateRemoteListUI()
+    local remoteFrame = self.ui.remoteFrame
+    for _, child in ipairs(remoteFrame:GetChildren()) do
+        if child:IsA("TextButton") and child ~= self.ui.remoteTemplate then
+            child:Destroy()
+        end
     end
-    if not DebugTool.isLogging then return end
-    for i, item in ipairs(list) do
-        local btn = template:Clone()
-        btn.Text = item.Name .. " [" .. item.ClassName .. "]" .. (item.Parent and (" (" .. item.Parent.Name .. ")") or "")
+    if not self.isLogging or self.currentMode ~= "remote" then
+        remoteFrame.Visible = false
+        return
+    end
+    remoteFrame.Visible = true
+    for i, remote in ipairs(self.remoteList) do
+        local btn = self.ui.remoteTemplate:Clone()
+        btn.Text = remote.Name .. " [" .. remote.ClassName .. "]"
         btn.Position = UDim2.new(0, 0, 0, (i-1)*28)
         btn.Visible = true
-        btn.Parent = frame
+        btn.Parent = remoteFrame
         btn.MouseButton1Click:Connect(function()
-            handler(item)
+            self:openTestPanel(remote)
         end)
     end
-    frame.CanvasSize = UDim2.new(0, 0, 0, math.max(#list*28, frame.AbsoluteSize.Y))
+    remoteFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(#self.remoteList*28, remoteFrame.AbsoluteSize.Y))
 end
 
-function DebugTool:updateRemoteListUI()
-    updateList(self.ui.remoteFrame, self.remoteList, function(remote) self:openTestPanel(remote) end)
+-- Update daftar LocalScript di UI
+function DebugTool:updateLocalScriptListUI()
+    local localScriptFrame = self.ui.localScriptFrame
+    for _, child in ipairs(localScriptFrame:GetChildren()) do
+        if child:IsA("TextButton") and child ~= self.ui.localScriptTemplate then
+            child:Destroy()
+        end
+    end
+    if not self.isLogging or self.currentMode ~= "localscript" then
+        localScriptFrame.Visible = false
+        return
+    end
+    localScriptFrame.Visible = true
+    for i, scriptObj in ipairs(self.localScriptList) do
+        local btn = self.ui.localScriptTemplate:Clone()
+        btn.Text = scriptObj:GetFullName()
+        btn.Position = UDim2.new(0, 0, 0, (i-1)*28)
+        btn.Visible = true
+        btn.Parent = localScriptFrame
+        btn.MouseButton1Click:Connect(function()
+            self:openLocalScriptPanel(scriptObj)
+        end)
+    end
+    localScriptFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(#self.localScriptList*28, localScriptFrame.AbsoluteSize.Y))
 end
 
-function DebugTool:updateScriptsListUI()
-    updateList(self.ui.scriptsFrame, self.scriptsList, function(scriptObj) self:viewSourceCode(scriptObj) end)
-end
+-- Panel untuk melihat info LocalScript
+function DebugTool:openLocalScriptPanel(scriptObj)
+    -- Hapus panel lama jika ada
+    if self.ui.testPanel then
+        self.ui.testPanel:Destroy()
+        self.ui.testPanel = nil
+    end
 
--- === PANEL LOGIC: REMOTE TESTER ===
-
-function DebugTool:openTestPanel(remote)
-    if self.activePanel then self.activePanel:Destroy() end
-    
     local panel = Instance.new("Frame")
-    -- Menggunakan ukuran tetap yang kecil
-    panel.Size = UDim2.new(0, 320, 0, 200)
-    panel.Position = UDim2.new(0.5, -160, 0.5, -100)
+    panel.Size = UDim2.new(0, 320, 0, 120)
+    panel.Position = UDim2.new(0.5, -160, 0.5, -60)
+    panel.AnchorPoint = Vector2.new(0, 0)
+    panel.BackgroundColor3 = Color3.fromRGB(30, 20, 40)
+    panel.BackgroundTransparency = 0.05
+    panel.BorderSizePixel = 0
+    panel.Parent = self.ui.screenGui
+    self.ui.testPanel = panel
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -40, 0, 28)
+    title.Position = UDim2.new(0, 20, 0, 10)
+    title.BackgroundTransparency = 1
+    title.Text = "LocalScript: " .. scriptObj.Name
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.SourceSansBold
+    title.TextSize = 18
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = panel
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 28, 0, 28)
+    closeBtn.Position = UDim2.new(1, -38, 0, 10)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 47)
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.new(1,1,1)
+    closeBtn.Font = Enum.Font.SourceSansBold
+    closeBtn.TextSize = 18
+    closeBtn.Parent = panel
+    closeBtn.MouseButton1Click:Connect(function()
+        panel:Destroy()
+        self.ui.testPanel = nil
+    end)
+
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Size = UDim2.new(1, -40, 0, 60)
+    infoLabel.Position = UDim2.new(0, 20, 0, 50)
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.Text = "Parent: " .. (scriptObj.Parent and scriptObj.Parent:GetFullName() or "-") .. "\nClass: " .. scriptObj.ClassName
+    infoLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
+    infoLabel.Font = Enum.Font.Code
+    infoLabel.TextSize = 15
+    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+    infoLabel.TextWrapped = true
+    infoLabel.Parent = panel
+end
+
+-- Panel untuk mengetes RemoteEvent/RemoteFunction
+function DebugTool:openTestPanel(remote)
+    -- Hapus panel lama jika ada
+    if self.ui.testPanel then
+        self.ui.testPanel:Destroy()
+        self.ui.testPanel = nil
+    end
+
+    local panel = Instance.new("Frame")
+    panel.Size = UDim2.new(0, 320, 0, 180)
+    panel.Position = UDim2.new(0.5, -160, 0.5, -90)
     panel.AnchorPoint = Vector2.new(0, 0)
     panel.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
     panel.BackgroundTransparency = 0.05
     panel.BorderSizePixel = 0
     panel.Parent = self.ui.screenGui
-    self.activePanel = panel
+    self.ui.testPanel = panel
 
-    -- ... [Kontrol dan Logika Pengujian Remote] ...
-    
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, -40, 0, 28)
     title.Position = UDim2.new(0, 20, 0, 10)
@@ -414,9 +480,9 @@ function DebugTool:openTestPanel(remote)
     closeBtn.Parent = panel
     closeBtn.MouseButton1Click:Connect(function()
         panel:Destroy()
-        self.activePanel = nil
+        self.ui.testPanel = nil
     end)
-    
+
     local argBox = Instance.new("TextBox")
     argBox.Size = UDim2.new(1, -40, 0, 32)
     argBox.Position = UDim2.new(0, 20, 0, 50)
@@ -424,7 +490,7 @@ function DebugTool:openTestPanel(remote)
     argBox.TextColor3 = Color3.fromRGB(255, 255, 255)
     argBox.Font = Enum.Font.Code
     argBox.TextSize = 16
-    argBox.PlaceholderText = "Argumen: 123, 'string', true"
+    argBox.PlaceholderText = "Masukkan argumen (contoh: 123, 'hello', true)"
     argBox.Text = ""
     argBox.ClearTextOnFocus = false
     argBox.Parent = panel
@@ -451,8 +517,28 @@ function DebugTool:openTestPanel(remote)
     resultLabel.TextWrapped = true
     resultLabel.Parent = panel
 
+    -- Fungsi parsing argumen sederhana (comma separated, mendukung string, number, boolean)
+    local function parseArgs(str)
+        local args = {}
+        for arg in string.gmatch(str, "([^,]+)") do
+            arg = arg:gsub("^%s*(.-)%s*$", "%1") -- trim
+            if tonumber(arg) then
+                table.insert(args, tonumber(arg))
+            elseif arg == "true" then
+                table.insert(args, true)
+            elseif arg == "false" then
+                table.insert(args, false)
+            elseif arg:match("^'.*'$") or arg:match('^".*"$') then
+                table.insert(args, arg:sub(2, -2))
+            else
+                table.insert(args, arg)
+            end
+        end
+        return unpack(args)
+    end
+
     sendBtn.MouseButton1Click:Connect(function()
-        local args = parseArgs(argBox.Text)
+        local args = {parseArgs(argBox.Text)}
         if remote:IsA("RemoteEvent") then
             local ok, err = pcall(function()
                 remote:FireServer(unpack(args))
@@ -477,93 +563,11 @@ function DebugTool:openTestPanel(remote)
     end)
 end
 
--- === PANEL LOGIC: SOURCE VIEWER (REVISI SKALA) ===
 
-function DebugTool:viewSourceCode(scriptObj)
-    if self.activePanel then self.activePanel:Destroy() end
-
-    local panel = Instance.new("Frame")
-    -- Menggunakan skala responsif (80% lebar dan tinggi layar)
-    panel.Size = UDim2.new(0.8, 0, 0.8, 0)
-    panel.Position = UDim2.new(0.5, 0, 0.5, 0)
-    panel.AnchorPoint = Vector2.new(0.5, 0.5)
-    panel.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
-    panel.BackgroundTransparency = 0.05
-    panel.BorderSizePixel = 0
-    panel.Parent = self.ui.screenGui
-    self.activePanel = panel
-    
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 28, 0, 28)
-    closeBtn.Position = UDim2.new(1, -38, 0, 10)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 47)
-    closeBtn.Text = "X"
-    closeBtn.TextColor3 = Color3.new(1,1,1)
-    closeBtn.Font = Enum.Font.SourceSansBold
-    closeBtn.TextSize = 18
-    closeBtn.Parent = panel
-    closeBtn.MouseButton1Click:Connect(function()
-        panel:Destroy()
-        self.activePanel = nil
-    end)
-    
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -40, 0, 28)
-    title.Position = UDim2.new(0, 20, 0, 10)
-    title.BackgroundTransparency = 1
-    title.Text = "Source: " .. scriptObj.Name .. " [" .. scriptObj.ClassName .. "]"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.Font = Enum.Font.SourceSansBold
-    title.TextSize = 18
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = panel
-
-    local sourceFrame = Instance.new("ScrollingFrame")
-    sourceFrame.Size = UDim2.new(1, -40, 1, -60)
-    sourceFrame.Position = UDim2.new(0, 20, 0, 50)
-    sourceFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 60)
-    sourceFrame.BackgroundTransparency = 0.0
-    sourceFrame.BorderSizePixel = 0
-    sourceFrame.ScrollBarThickness = 6
-    sourceFrame.Parent = panel
-
-    local textBox = Instance.new("TextLabel") -- Menggunakan TextLabel untuk mengatasi masalah UI responsiveness di TextBox
-    textBox.Size = UDim2.new(1, 0, 0, 10000) -- Ukuran vertikal besar agar bisa di-scroll
-    textBox.BackgroundTransparency = 1
-    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    textBox.Font = Enum.Font.Code
-    textBox.TextSize = 12
-    textBox.TextXAlignment = Enum.TextXAlignment.Left
-    textBox.TextYAlignment = Enum.TextYAlignment.Top
-    textBox.TextWrapped = false -- Penting: agar kode tidak terpotong
-    textBox.Parent = sourceFrame
-    
-    -- MENGAMBIL KODE SUMBER
-    local sourceCode = nil
-    local success, err = pcall(function()
-        sourceCode = scriptObj.Source 
-    end)
-    
-    -- Pembersihan Output: Menghilangkan error skrip yang terlihat kosong
-    if success and type(sourceCode) == "string" and sourceCode:len() > 0 then
-        textBox.Text = sourceCode
-        textBox.Size = UDim2.new(1, 0, 0, math.max(sourceFrame.AbsoluteSize.Y, sourceCode:len() * 0.12)) -- Perkiraan ukuran
-        sourceFrame.CanvasSize = UDim2.new(0, 0, 0, textBox.Size.Offset.Y)
-        self:addLog("[Source] Berhasil mengambil kode dari: " .. scriptObj.Name .. " (Ukuran: " .. sourceCode:len() .. " bytes)")
-    else
-        textBox.Text = "------------------------------------------------------\n-- KODE SUMBER KOSONG, TIDAK DITEMUKAN, ATAU DIBLOKIR --\n------------------------------------------------------\nIni mungkin terjadi jika:\n1. Skrip ini adalah skrip Server (Script) yang tidak direplikasi kodenya.\n2. ModuleScript belum dimuat oleh LocalScript.\n3. Skrip sengaja dikosongkan/dienkripsi."
-        textBox.TextSize = 14
-        textBox.Size = UDim2.new(1, 0, 0, 150)
-        sourceFrame.CanvasSize = UDim2.new(0, 0, 0, 150)
-        self:addLog("[Source] Gagal mengambil kode: " .. scriptObj.Name)
-    end
-end
-
--- === INITIALIZATION ===
-
+-- Inisialisasi modul
 function DebugTool:init()
     self:createUI()
-    self:addLog("DebugToolUI siap. Tekan Start untuk scan Remote/Script Klien.")
+    self:addLog("DebugToolUI siap. Tekan Start untuk scan & test RemoteEvent/RemoteFunction atau LocalScript.")
 end
 
 DebugTool:init()
