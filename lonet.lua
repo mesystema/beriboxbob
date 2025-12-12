@@ -1,12 +1,13 @@
 --[[
-    DebugToolUI: Remote Scanner & Source Viewer Profesional (REVISI V3)
-    Fokus: Peningkatan Stabilitas Loading/Injection dan Keamanan Akses Skrip.
+    DebugToolUI: Remote Scanner & Source Viewer Profesional (REVISI V4: Stabilitas Loading)
+    Fokus: Memperbaiki masalah sinkronisasi dan crash saat inisialisasi awal.
 --]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local player = Players.LocalPlayer
+-- Safety Check: Pastikan LocalPlayer sudah ada
+local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local PlayerGui = player:WaitForChild("PlayerGui")
 
 local DebugTool = {}
@@ -17,22 +18,27 @@ DebugTool.scriptsList = {}
 DebugTool.ui = {}
 DebugTool.activePanel = nil
 
--- === UTILITY FUNCTIONS (REVISI parseArgs) ===
+-- === UTILITY FUNCTIONS ===
 
-function DebugTool:serializeData(data, depth)
-    -- ... (Fungsi ini tidak diubah) ...
-    depth = depth or 0
-    if depth > 2 then return "<Max Depth>" end
-    if typeof(data) == "table" then
-        local str = "{"
-        for k, v in pairs(data) do
-            local keyStr = (typeof(k) == "string" and ("'" .. k .. "'") or tostring(k))
-            str = str .. keyStr .. ": " .. self:serializeData(v, depth + 1) .. ", "
+-- Utility: Serialize data (disederhanakan untuk logging)
+function DebugTool:serializeData(data)
+    local maxDepth = 2
+    local function serialize(value, depth)
+        if depth > maxDepth then return "<Max Depth>" end
+        if typeof(value) == "table" then
+            local str = "{"
+            for k, v in pairs(value) do
+                local keyStr = (typeof(k) == "string" and ("'" .. k .. "'") or tostring(k))
+                str = str .. keyStr .. ": " .. serialize(v, depth + 1) .. ", "
+            end
+            return str:sub(1, -3) .. "}"
+        elseif typeof(value) == "string" then
+            return "'" .. value .. "'"
+        else
+            return tostring(value)
         end
-        return str:sub(1, -3) .. "}"
-    else
-        return tostring(data)
     end
+    return serialize(data, 0)
 end
 
 function DebugTool:addLog(message)
@@ -40,25 +46,19 @@ function DebugTool:addLog(message)
     if #self.log > 50 then
         table.remove(self.log, #self.log)
     end
-    self:updateLogUI()
+    if self.ui.logFrame then
+        self:updateLogUI()
+    end
 end
 
--- Fungsi Parsing Argumen yang Disederhanakan (Menggunakan string.split/split sederhana)
+-- Fungsi Parsing Argumen (Paling disederhanakan: HANYA MENDUKUNG string, number, boolean)
 local function parseArgs(str)
     local args = {}
-    
-    -- Menggunakan split sederhana
-    local t = {}
-    local splitFunc = string.split or function(s, delimiter)
-        local result = {}
-        for match in (s..delimiter):gmatch("(.-)"..delimiter) do
-            table.insert(result, match)
-        end
-        return result
-    end
-
-    for _, arg in ipairs(splitFunc(str, ",")) do
+    -- Coba memisahkan input berdasarkan koma (,)
+    for arg in string.gmatch(str .. ",", "(.-),") do
         arg = arg:gsub("^%s*(.-)%s*$", "%1") -- trim whitespace
+        if arg == "" then continue end
+
         if tonumber(arg) then
             table.insert(args, tonumber(arg))
         elseif arg == "true" then
@@ -66,22 +66,23 @@ local function parseArgs(str)
         elseif arg == "false" then
             table.insert(args, false)
         elseif arg:match("^'.*'$") or arg:match('^".*"$') then
-            table.insert(args, arg:sub(2, -2)) -- Hapus tanda kutip
-        -- Argumen string yang tidak dikutip akan diabaikan/dianggap sebagai string
-        elseif arg ~= "" then
-             table.insert(args, arg)
+            -- String yang dikutip
+            table.insert(args, arg:sub(2, -2))
+        else
+            -- Semua yang lain dianggap string mentah (atau skema yang tidak valid)
+            table.insert(args, arg)
         end
     end
     return args
 end
 
--- === SCANNING LOGIC (REVISI scanScripts) ===
+-- === SCANNING LOGIC ===
 
 function DebugTool:scanRemotes()
-    -- ... (Tidak diubah, hanya memastikan lokasinya) ...
     self.remoteList = {}
     self:addLog("=== Scanning Remotes... ===")
     local found = 0
+    -- Mencari Remotes di seluruh ReplicatedStorage (bukan hanya anak langsung)
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
         if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
             found = found + 1
@@ -96,18 +97,19 @@ function DebugTool:scanScripts()
     self.scriptsList = {}
     local locations = {
         PlayerGui,
-        player:WaitForChild("PlayerScripts"),
+        player:WaitForChild("PlayerScripts", 5), -- Timeout 5 detik
     }
     self:addLog("=== Scanning Client Scripts (LocalScript only)... ===")
     local found = 0
     
     local function findScripts(parent)
+        if not parent then return end
         for _, obj in ipairs(parent:GetChildren()) do
-            -- FOKUS HANYA PADA LocalScript untuk menghindari masalah .Source pada ModuleScript
             if obj:IsA("LocalScript") then
                 found = found + 1
                 table.insert(self.scriptsList, obj)
             end
+            -- Hanya telusuri objek container yang logis
             if obj:IsA("Folder") or obj:IsA("ScreenGui") or obj:IsA("Frame") or obj:IsA("Model") then
                 findScripts(obj)
             end
@@ -125,7 +127,7 @@ end
 -- === UI CREATION & HANDLERS ===
 
 function DebugTool:createUI()
-    -- Gunakan pcall untuk mengatasi kegagalan UI di beberapa environment
+    -- **Kritikal:** Membungkus pembuatan UI dalam pcall untuk menangani error *runtime* saat inject
     local success, err = pcall(function()
         local screenGui = Instance.new("ScreenGui")
         screenGui.Name = "DebugToolUI"
@@ -133,7 +135,7 @@ function DebugTool:createUI()
         screenGui.IgnoreGuiInset = true
         screenGui.Parent = PlayerGui
 
-        -- Main frame (Responsif dengan ukuran MinSize)
+        -- Main frame (Responsif)
         local mainFrame = Instance.new("Frame")
         mainFrame.Size = UDim2.new(0.3, 0, 0, 500)
         mainFrame.MinSize = Vector2.new(320, 500)
@@ -145,8 +147,9 @@ function DebugTool:createUI()
         mainFrame.Draggable = true
         mainFrame.Parent = screenGui
         
-        -- (Semua komponen UI lainnya...)
+        -- ... (Kode UI yang tidak berubah: tombol, log, tab, frame list) ...
         
+        -- MINIMIZE BUTTON
         local minimizeBtn = Instance.new("TextButton")
         minimizeBtn.Size = UDim2.new(0, 32, 0, 32)
         minimizeBtn.Position = UDim2.new(1, -38, 0, 6)
@@ -157,6 +160,7 @@ function DebugTool:createUI()
         minimizeBtn.TextSize = 22
         minimizeBtn.Parent = mainFrame
     
+        -- RESTORE BUTTON
         local restoreBtn = Instance.new("TextButton")
         restoreBtn.Size = UDim2.new(0, 48, 0, 32)
         restoreBtn.Position = UDim2.new(0, 10, 0, 10)
@@ -168,6 +172,7 @@ function DebugTool:createUI()
         restoreBtn.Visible = false
         restoreBtn.Parent = screenGui
     
+        -- START/STOP BUTTONS
         local startBtn = Instance.new("TextButton")
         startBtn.Size = UDim2.new(0, 80, 0, 36)
         startBtn.Position = UDim2.new(0, 10, 0, 10)
@@ -188,17 +193,7 @@ function DebugTool:createUI()
         stopBtn.TextSize = 20
         stopBtn.Parent = mainFrame
     
-        local logLabel = Instance.new("TextLabel")
-        logLabel.Size = UDim2.new(1, -20, 0, 30)
-        logLabel.Position = UDim2.new(0, 10, 0, 60)
-        logLabel.BackgroundTransparency = 1
-        logLabel.Text = "Log:"
-        logLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        logLabel.Font = Enum.Font.SourceSansBold
-        logLabel.TextSize = 18
-        logLabel.TextXAlignment = Enum.TextXAlignment.Left
-        logLabel.Parent = mainFrame
-    
+        -- LOG FRAME
         local logFrame = Instance.new("ScrollingFrame")
         logFrame.Size = UDim2.new(1, -20, 0.3, -70)
         logFrame.Position = UDim2.new(0, 10, 0, 90)
@@ -220,7 +215,7 @@ function DebugTool:createUI()
         logTemplate.Visible = false
         logTemplate.Parent = logFrame
         
-        -- Tabs for Remote/Scripts
+        -- TABS
         local tabFrame = Instance.new("Frame")
         tabFrame.Size = UDim2.new(1, -20, 0, 30)
         tabFrame.Position = UDim2.new(0, 10, 0.3, 70)
@@ -245,14 +240,13 @@ function DebugTool:createUI()
         scriptTabBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
         scriptTabBtn.Parent = tabFrame
     
-        -- Container Frame for Lists
+        -- LISTS
         local listContainer = Instance.new("Frame")
         listContainer.Size = UDim2.new(1, -20, 0.5, -70)
         listContainer.Position = UDim2.new(0, 10, 0.3, 100)
         listContainer.BackgroundTransparency = 1
         listContainer.Parent = mainFrame
         
-        -- Remote List Frame
         local remoteFrame = Instance.new("ScrollingFrame")
         remoteFrame.Name = "RemoteList"
         remoteFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -263,7 +257,6 @@ function DebugTool:createUI()
         remoteFrame.ScrollBarThickness = 6
         remoteFrame.Parent = listContainer
     
-        -- Script List Frame
         local scriptsFrame = remoteFrame:Clone()
         scriptsFrame.Name = "ScriptsList"
         scriptsFrame.BackgroundColor3 = Color3.fromRGB(50, 60, 50)
@@ -296,7 +289,9 @@ function DebugTool:createUI()
             scriptTabBtn = scriptTabBtn,
         }
 
+        -- EVENT HANDLERS
         local function switchTab(tabName)
+            -- ... (Logika tab) ...
             if tabName == "Remotes" then
                 remoteFrame.Visible = true
                 scriptsFrame.Visible = false
@@ -348,20 +343,29 @@ function DebugTool:createUI()
     end)
     
     if not success then
-        warn("DebugToolUI: Gagal membuat UI. Mungkin masalah lingkungan: " .. tostring(err))
+        -- Jika gagal di dalam pcall, berikan pesan error yang jelas
+        warn("DebugToolUI: CRITICAL FAILURE: Gagal membuat UI. Masalah mungkin pada lingkungan/executor: " .. tostring(err))
     end
 end
 
 -- === UI UPDATES ===
 
 function DebugTool:updateLogUI()
-    -- ... (Logika ini tidak diubah) ...
     local logFrame = self.ui.logFrame
-    if not logFrame then return end -- Safety check
+    if not logFrame then return end
     local template = self.ui.logTemplate
+    
+    -- Logika pembaruan Log
+    local childrenToDestroy = {}
     for _, child in ipairs(logFrame:GetChildren()) do
-        if child:IsA("TextLabel") and child ~= template then child:Destroy() end
+        if child:IsA("TextLabel") and child ~= template then 
+            table.insert(childrenToDestroy, child)
+        end
     end
+    for _, child in ipairs(childrenToDestroy) do
+        child:Destroy()
+    end
+
     for i, msg in ipairs(self.log) do
         local label = template:Clone()
         label.Text = msg
@@ -375,11 +379,21 @@ end
 
 local function updateList(frame, list, handler)
     local template = DebugTool.ui.listTemplate
-    if not frame or not template then return end -- Safety check
+    if not frame or not template then return end
+    
+    -- Logika pembaruan List
+    local childrenToDestroy = {}
     for _, child in ipairs(frame:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
+        if child:IsA("TextButton") then 
+            table.insert(childrenToDestroy, child)
+        end
     end
+    for _, child in ipairs(childrenToDestroy) do
+        child:Destroy()
+    end
+    
     if not DebugTool.isLogging then return end
+    
     for i, item in ipairs(list) do
         local btn = template:Clone()
         btn.Text = item.Name .. " [" .. item.ClassName .. "]" .. (item.Parent and (" (" .. item.Parent.Name .. ")") or "")
@@ -416,7 +430,6 @@ function DebugTool:openTestPanel(remote)
     panel.Parent = DebugTool.ui.screenGui
     DebugTool.activePanel = panel
     
-    -- ... (Logika Tombol dan Kotak Teks) ...
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, -40, 0, 28)
     title.Position = UDim2.new(0, 20, 0, 10)
@@ -502,7 +515,7 @@ function DebugTool:openTestPanel(remote)
     end)
 end
 
--- === PANEL LOGIC: SOURCE VIEWER (REVISI STABILITAS) ===
+-- === PANEL LOGIC: SOURCE VIEWER (RESPONSIF & STABIL) ===
 
 function DebugTool:viewSourceCode(scriptObj)
     if DebugTool.activePanel then DebugTool.activePanel:Destroy() end
@@ -562,7 +575,7 @@ function DebugTool:viewSourceCode(scriptObj)
     textBox.TextWrapped = false
     textBox.Parent = sourceFrame
     
-    -- MENGAMBIL KODE SUMBER DENGAN PCALL
+    -- MENGAMBIL KODE SUMBER
     local sourceCode = nil
     local success, err = pcall(function()
         sourceCode = scriptObj.Source 
@@ -570,16 +583,17 @@ function DebugTool:viewSourceCode(scriptObj)
     
     if success and type(sourceCode) == "string" and sourceCode:len() > 0 then
         textBox.Text = sourceCode
-        -- Kalkulasi CanvasSize yang lebih baik (perkiraan 10 piksel per baris + 0.12 piksel per karakter untuk panjang)
+        -- Kalkulasi CanvasSize dinamis
+        local requiredHeight = 200 -- Ukuran minimum
         local lines = sourceCode:split("\n")
-        local requiredHeight = #lines * 14 + 50 -- Perkiraan 14px per baris
+        requiredHeight = math.max(requiredHeight, #lines * 14 + 50) -- Perkiraan 14px per baris
         
         textBox.Size = UDim2.new(1, 0, 0, requiredHeight) 
         sourceFrame.CanvasSize = UDim2.new(0, 0, 0, requiredHeight)
 
         DebugTool:addLog("[Source] Berhasil mengambil kode dari: " .. scriptObj.Name)
     else
-        textBox.Text = "------------------------------------------------------\n-- KODE SUMBER KOSONG ATAU DIBLOKIR --\n------------------------------------------------------\nSkrip ditemukan di Client: " .. scriptObj.Name .. ".\nNamun, properti .Source tidak dapat diakses atau kosong. Ini normal jika skrip dienkripsi/diblokir oleh sistem anti-cheat game."
+        textBox.Text = "------------------------------------------------------\n-- KODE SUMBER KOSONG ATAU DIBLOKIR --\n------------------------------------------------------\nSkrip ditemukan di Client: " .. scriptObj.Name .. ".\nAlasan utama: properti .Source tidak dapat diakses (sering terjadi di environment exploit yang memblokir akses). Atau skrip dienkripsi."
         textBox.TextSize = 14
         textBox.Size = UDim2.new(1, 0, 0, 200)
         sourceFrame.CanvasSize = UDim2.new(0, 0, 0, 200)
@@ -589,15 +603,17 @@ end
 
 -- === INITIALIZATION ===
 
--- Jeda singkat untuk memastikan semua services dimuat
+-- Jeda singkat DILUAR pcall utama untuk memastikan environment lebih stabil
 task.wait(0.5)
 
 function DebugTool:init()
     self:createUI()
     if DebugTool.ui.screenGui then
-        DebugTool:addLog("DebugToolUI berhasil dimuat. Tekan Start untuk scan.")
+        -- Jika UI berhasil dibuat (screenGui ada)
+        DebugTool:addLog("DebugToolUI berhasil diinisialisasi. Tekan Start untuk memulai pemindaian.")
     else
-        warn("DebugToolUI: Inisialisasi gagal total.")
+        -- Gagal inisialisasi total (error sudah di-warn oleh pcall di createUI)
+        print("ERROR: Inisialisasi DebugToolUI gagal total. Periksa log konsol untuk detailnya.")
     end
 end
 
