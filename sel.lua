@@ -1,34 +1,24 @@
 --[[
-    DebugToolUI: UI Debugging Tool untuk Roblox (Mobile First)
-    - Menyediakan Start/Stop button untuk logging RemoteEvent/RemoteFunction
-    - Menampilkan log aktivitas secara real-time tanpa blocking main game
-    - Mengikuti praktik terbaik: modular, efisien, dan aman untuk client-side
-    - Hanya untuk debugging di development environment
+    DebugToolUI: Roblox Client-Side Debugging Tool (Mobile First)
+    Profesional, efisien, dan aman untuk Roblox Android.
+    - UI dengan tombol Start (scan fungsi di ReplicatedStorage) & Stop
+    - Menampilkan hasil scan fungsi (RemoteEvent/RemoteFunction) di ReplicatedStorage
+    - Tidak blocking main game, event-driven, modular
+    - Mengikuti praktik terbaik: camelCase, modular, komentar jelas
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 
--- Modul utama DebugTool
 local DebugTool = {}
-DebugTool.isLogging = false
 DebugTool.log = {}
-DebugTool.connections = {}
+DebugTool.isScanning = false
+DebugTool.ui = {}
 
--- Serialize data untuk log
-function DebugTool:serialize(data, depth)
-    depth = depth or 0
-    if depth > 2 then return "<Max Depth>" end
-    if typeof(data) == "table" then
-        local str = "{"
-        for k, v in pairs(data) do
-            str = str .. tostring(k) .. "=" .. self:serialize(v, depth + 1) .. ", "
-        end
-        return str .. "}"
-    else
-        return tostring(data)
-    end
+-- Utility: Serialize instance info
+function DebugTool:serializeInstance(instance)
+    return string.format("%s [%s]", instance.Name, instance.ClassName)
 end
 
 -- Tambahkan log dan update UI
@@ -40,71 +30,21 @@ function DebugTool:addLog(message)
     self:updateLogUI()
 end
 
--- Hook RemoteEvent/RemoteFunction
-function DebugTool:hookRemotes()
-    -- Disconnect jika sudah ada koneksi sebelumnya
-    for _, conn in ipairs(self.connections) do
-        conn:Disconnect()
-    end
-    self.connections = {}
-
-    local function hookRemote(remote)
-        if remote:IsA("RemoteEvent") then
-            -- OnClientEvent
-            table.insert(self.connections, remote.OnClientEvent:Connect(function(...)
-                if self.isLogging then
-                    self:addLog("OnClientEvent: " .. remote.Name .. " | Data: " .. self:serialize({...}))
-                end
-            end))
-            -- FireServer (override)
-            if not remote.__debugToolHooked then
-                local oldFireServer = remote.FireServer
-                remote.FireServer = function(selfRemote, ...)
-                    if DebugTool.isLogging then
-                        DebugTool:addLog("FireServer: " .. selfRemote.Name .. " | Data: " .. DebugTool:serialize({...}))
-                    end
-                    return oldFireServer(selfRemote, ...)
-                end
-                remote.__debugToolHooked = true
-            end
-        elseif remote:IsA("RemoteFunction") then
-            -- OnClientInvoke
-            if not remote.__debugToolHooked then
-                local oldOnClientInvoke = remote.OnClientInvoke
-                remote.OnClientInvoke = function(...)
-                    if DebugTool.isLogging then
-                        DebugTool:addLog("OnClientInvoke: " .. remote.Name .. " | Data: " .. DebugTool:serialize({...}))
-                    end
-                    if oldOnClientInvoke then
-                        return oldOnClientInvoke(...)
-                    end
-                end
-                -- InvokeServer (override)
-                local oldInvokeServer = remote.InvokeServer
-                remote.InvokeServer = function(selfRemote, ...)
-                    if DebugTool.isLogging then
-                        DebugTool:addLog("InvokeServer: " .. selfRemote.Name .. " | Data: " .. DebugTool:serialize({...}))
-                    end
-                    return oldInvokeServer(selfRemote, ...)
-                end
-                remote.__debugToolHooked = true
-            end
-        end
-    end
-
-    -- Hook semua RemoteEvent/RemoteFunction di ReplicatedStorage
-    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
-        if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
-            hookRemote(remote)
-        end
-    end
-
-    -- Hook remote baru yang ditambahkan
-    table.insert(self.connections, ReplicatedStorage.DescendantAdded:Connect(function(obj)
+-- Scan semua fungsi (RemoteEvent/RemoteFunction) di ReplicatedStorage
+function DebugTool:scanRemotes()
+    self:addLog("=== Scanning ReplicatedStorage... ===")
+    local found = 0
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
         if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-            hookRemote(obj)
+            found = found + 1
+            self:addLog(self:serializeInstance(obj))
         end
-    end))
+    end
+    if found == 0 then
+        self:addLog("Tidak ditemukan RemoteEvent/RemoteFunction.")
+    else
+        self:addLog("Total ditemukan: " .. found)
+    end
 end
 
 -- UI: Buat tampilan utama
@@ -114,17 +54,14 @@ function DebugTool:createUI()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = player:WaitForChild("PlayerGui")
 
-    -- Frame utama
     local mainFrame = Instance.new("Frame")
     mainFrame.Size = UDim2.new(0, 340, 0, 320)
     mainFrame.Position = UDim2.new(1, -350, 1, -340)
-    mainFrame.AnchorPoint = Vector2.new(0, 0)
     mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     mainFrame.BackgroundTransparency = 0.15
     mainFrame.BorderSizePixel = 0
     mainFrame.Parent = screenGui
 
-    -- Start Button
     local startBtn = Instance.new("TextButton")
     startBtn.Size = UDim2.new(0, 80, 0, 36)
     startBtn.Position = UDim2.new(0, 10, 0, 10)
@@ -135,7 +72,6 @@ function DebugTool:createUI()
     startBtn.TextSize = 20
     startBtn.Parent = mainFrame
 
-    -- Stop Button
     local stopBtn = Instance.new("TextButton")
     stopBtn.Size = UDim2.new(0, 80, 0, 36)
     stopBtn.Position = UDim2.new(0, 100, 0, 10)
@@ -146,7 +82,6 @@ function DebugTool:createUI()
     stopBtn.TextSize = 20
     stopBtn.Parent = mainFrame
 
-    -- Log Label
     local logLabel = Instance.new("TextLabel")
     logLabel.Size = UDim2.new(1, -20, 0, 30)
     logLabel.Position = UDim2.new(0, 10, 0, 60)
@@ -158,7 +93,6 @@ function DebugTool:createUI()
     logLabel.TextXAlignment = Enum.TextXAlignment.Left
     logLabel.Parent = mainFrame
 
-    -- Log ScrollingFrame
     local logFrame = Instance.new("ScrollingFrame")
     logFrame.Size = UDim2.new(1, -20, 1, -100)
     logFrame.Position = UDim2.new(0, 10, 0, 90)
@@ -169,7 +103,6 @@ function DebugTool:createUI()
     logFrame.ScrollBarThickness = 6
     logFrame.Parent = mainFrame
 
-    -- Template untuk log item
     local logTemplate = Instance.new("TextLabel")
     logTemplate.Size = UDim2.new(1, 0, 0, 22)
     logTemplate.BackgroundTransparency = 1
@@ -181,7 +114,6 @@ function DebugTool:createUI()
     logTemplate.Visible = false
     logTemplate.Parent = logFrame
 
-    -- Simpan referensi UI
     self.ui = {
         screenGui = screenGui,
         mainFrame = mainFrame,
@@ -193,10 +125,21 @@ function DebugTool:createUI()
 
     -- Event handler
     startBtn.MouseButton1Click:Connect(function()
-        self:startLogging()
+        if not self.isScanning then
+            self.isScanning = true
+            self:addLog("Scan dimulai...")
+            self:scanRemotes()
+        else
+            self:addLog("Sudah dalam mode scanning.")
+        end
     end)
     stopBtn.MouseButton1Click:Connect(function()
-        self:stopLogging()
+        if self.isScanning then
+            self.isScanning = false
+            self:addLog("Scan dihentikan.")
+        else
+            self:addLog("Tidak sedang scanning.")
+        end
     end)
 end
 
@@ -220,27 +163,10 @@ function DebugTool:updateLogUI()
     logFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(#self.log*22, logFrame.AbsoluteSize.Y))
 end
 
--- Mulai logging
-function DebugTool:startLogging()
-    if not self.isLogging then
-        self.isLogging = true
-        self:addLog("Logging started.")
-    end
-end
-
--- Stop logging
-function DebugTool:stopLogging()
-    if self.isLogging then
-        self.isLogging = false
-        self:addLog("Logging stopped.")
-    end
-end
-
 -- Inisialisasi modul
 function DebugTool:init()
     self:createUI()
-    self:hookRemotes()
-    self:addLog("DebugToolUI ready. Tekan Start untuk mulai logging.")
+    self:addLog("DebugToolUI siap. Tekan Start untuk scan RemoteEvent/RemoteFunction.")
 end
 
 DebugTool:init()
