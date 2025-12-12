@@ -16,10 +16,54 @@ if not player:FindFirstChild("PlayerGui") then
     player:WaitForChild("PlayerGui")
 end
 
--- Konfigurasi Remote References - dengan timeout handling
+-- UI Setup dulu sebelum fungsi lain
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "BoloFishingUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 420, 0, 420)
+mainFrame.Position = UDim2.new(0, 40, 0, 80)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BackgroundTransparency = 0.15
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+-- Log display untuk menampilkan debug info - BUAT DULU
+local logBox = Instance.new("TextBox")
+logBox.Size = UDim2.new(1, -20, 0, 100)
+logBox.Position = UDim2.new(0, 10, 0, 160)
+logBox.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+logBox.TextColor3 = Color3.fromRGB(100, 200, 100)
+logBox.Font = Enum.Font.Code
+logBox.TextSize = 11
+logBox.TextWrapped = true
+logBox.TextXAlignment = Enum.TextXAlignment.Left
+logBox.TextYAlignment = Enum.TextYAlignment.Top
+logBox.ReadOnly = true
+logBox.MultiLine = true
+logBox.ClearTextOnFocus = false
+logBox.Parent = mainFrame
+
+-- Helper untuk add log message - SEBELUM digunakan
+local logMessages = {}
+local function addLog(message)
+    table.insert(logMessages, message)
+    if #logMessages > 15 then
+        table.remove(logMessages, 1)
+    end
+    logBox.Text = table.concat(logMessages, "\n")
+end
+
+addLog("[INIT] Starting script...")
+
+-- Konfigurasi Remote References
 local remotes = {}
 
--- Helper untuk split string (kompatibel dengan Lua lama)
+-- Helper untuk split string
 local function splitString(str, delimiter)
     local parts = {}
     local pattern = "([^" .. delimiter .. "]+)"
@@ -31,7 +75,7 @@ end
 
 -- List semua item di ReplicatedStorage untuk debugging
 local function listRemotes()
-    addLog("--- Remotes Available ---")
+    addLog("--- Available Remotes ---")
     for _, child in pairs(ReplicatedStorage:GetChildren()) do
         local icon = (child:IsA("RemoteFunction") or child:IsA("RemoteEvent")) and "🔴" or "📁"
         addLog(icon .. " " .. child.Name)
@@ -53,7 +97,7 @@ local function loadRemote(searchName)
     -- Cari partial match
     for _, child in pairs(ReplicatedStorage:GetChildren()) do
         if string.find(child.Name, searchName, 1, true) then
-            addLog("⚠️  Partial match: " .. child.Name)
+            addLog("⚠️  Partial: " .. child.Name)
             return child
         end
     end
@@ -67,22 +111,6 @@ remotes.chargeRod = loadRemote("ChargeFishingRod")
 remotes.minigameStart = loadRemote("RequestFishingMinigameStarted")
 remotes.fishingCompleted = loadRemote("FishingCompleted")
 remotes.cancelInput = loadRemote("CancelFishingInput")
-
--- UI Setup
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BoloFishingUI"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
-
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 420, 0, 340)
-mainFrame.Position = UDim2.new(0, 40, 0, 80)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-mainFrame.BackgroundTransparency = 0.15
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true
-mainFrame.Parent = screenGui
 
 local startBtn = Instance.new("TextButton")
 startBtn.Size = UDim2.new(0, 80, 0, 36)
@@ -176,6 +204,18 @@ waitLabel.Font = Enum.Font.Code
 waitLabel.TextSize = 12
 waitLabel.TextXAlignment = Enum.TextXAlignment.Left
 waitLabel.Parent = mainFrame
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, -20, 0, 30)
+statusLabel.Position = UDim2.new(0, 10, 0, 270)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: Idle"
+statusLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
+statusLabel.Font = Enum.Font.Code
+statusLabel.TextSize = 14
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.TextWrapped = true
+statusLabel.Parent = mainFrame
 
 -- Log display untuk menampilkan debug info
 local logBox = Instance.new("TextBox")
