@@ -9,17 +9,32 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 
--- Konfigurasi Remote References
--- Sesuaikan path jika berbeda di game Anda
-local remotes = {
-    chargeRod = ReplicatedStorage:WaitForChild("RF/ChargeFishingRod"),
-    minigameStart = ReplicatedStorage:WaitForChild("RF/RequestFishingMinigameStarted"),
-    fishingCompleted = ReplicatedStorage:WaitForChild("RE/FishingCompleted"),
-    cancelInput = ReplicatedStorage:FindFirstChild("RE/CancelFishingInput")
-}
+-- Tunggu player GUI ready
+if not player:FindFirstChild("PlayerGui") then
+    player:WaitForChild("PlayerGui")
+end
+
+-- Konfigurasi Remote References - dengan timeout handling
+local remotes = {}
+local function loadRemote(path, isWait)
+    local parts = string.split(path, "/")
+    local remote = ReplicatedStorage:FindFirstChild(parts[1])
+    if remote then
+        for i = 2, #parts do
+            remote = remote:FindFirstChild(parts[i])
+            if not remote then break end
+        end
+    end
+    return remote
+end
+
+-- Load remotes dengan safe checking
+remotes.chargeRod = loadRemote("RF/ChargeFishingRod")
+remotes.minigameStart = loadRemote("RF/RequestFishingMinigameStarted")
+remotes.fishingCompleted = loadRemote("RE/FishingCompleted")
+remotes.cancelInput = loadRemote("RE/CancelFishingInput")
 
 -- UI Setup
 local screenGui = Instance.new("ScreenGui")
@@ -279,6 +294,11 @@ end
 
 startBtn.MouseButton1Click:Connect(function()
     if not isLooping then
+        -- Validasi remote ada sebelum start
+        if not remotes.chargeRod or not remotes.minigameStart or not remotes.fishingCompleted then
+            setStatus("Error: Remotes not found!")
+            return
+        end
         isLooping = true
         setStatus("Starting...")
         task.spawn(doLoop)
@@ -291,9 +311,15 @@ stopBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Cleanup on player leaving
-player.Parent:FindFirstChildOfClass("Humanoid").Died:Connect(function()
-    isLooping = false
-end)
+local humanoidPath = player:FindFirstChild("Character")
+if humanoidPath then
+    local humanoid = humanoidPath:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.Died:Connect(function()
+            isLooping = false
+        end)
+    end
+end
 
 -- Inisialisasi status
 setStatus("Idle")
