@@ -1,97 +1,128 @@
---[[ 
-    FISH-IT BOT v29.1 (STABLE EDITION)
-    Fixed: Auto-reel issue & Remote Detection
-]]
-
+-- [[ FISH-IT BOT v29.2 FIXED ]] --
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- [[ CONFIG ]] --
+-- Pastikan PlayerGui tersedia
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- [[ DEFAULT CONFIG ]] --
 local BotConfig = {
     IsRunning = false,
     UseTimeSpoof = false,
-    WaitGame = 2.8, -- Rekomendasi 2.5 - 3.0 agar tidak terdeteksi
-    WaitCool = 0.8,
-    CastPower = 100,
+    WaitThrow = 0.5,
+    WaitGame = 2.5,
+    WaitCool = 0.5,
+    CastPower = 100
 }
 
-local Remotes = { Charge = nil, Minigame = nil, Finish = nil }
+-- Hapus UI Lama jika ada
+if CoreGui:FindFirstChild("FishBotUI_V29") then CoreGui.FishBotUI_V29:Destroy() end
+if PlayerGui:FindFirstChild("FishBotUI_V29") then PlayerGui.FishBotUI_V29:Destroy() end
 
--- [[ UI HELPER (Simplified for Stability) ]] --
--- (Bagian UI tetap sama dengan milikmu, namun pastikan fungsi StartBot menggunakan logic di bawah ini)
+-- [[ UI CREATION ]] --
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FishBotUI_V29"
+ScreenGui.ResetOnSpawn = false
+-- Coba ke CoreGui, jika gagal ke PlayerGui
+local success, err = pcall(function() ScreenGui.Parent = CoreGui end)
+if not success then ScreenGui.Parent = PlayerGui end
 
-local function GetRod()
-    local char = LocalPlayer.Character
-    return char and char:FindFirstChildWhichIsA("Tool")
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 300, 0, 350)
+MainFrame.Position = UDim2.new(0.5, -150, 0.4, -175)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true -- Support drag sederhana
+MainFrame.Parent = ScreenGui
+
+local Corner = Instance.new("UICorner", MainFrame)
+Corner.CornerRadius = UDim.new(0, 10)
+
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Text = "⚡ FISH-IT V29 FIXED"
+Title.TextColor3 = Color3.fromRGB(0, 255, 150)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.Parent = MainFrame
+
+-- Status Label
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, 0, 0, 30)
+StatusLabel.Position = UDim2.new(0, 0, 0, 40)
+StatusLabel.Text = "Status: Ready"
+StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Parent = MainFrame
+
+-- Start/Stop Button
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0.8, 0, 0, 50)
+ToggleBtn.Position = UDim2.new(0.1, 0, 0.4, 0)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+ToggleBtn.Text = "START BOT"
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.TextColor3 = Color3.white
+ToggleBtn.TextSize = 18
+ToggleBtn.Parent = MainFrame
+Instance.new("UICorner", ToggleBtn)
+
+-- [[ BOT LOGIC ]] --
+local function GetRemotes()
+    local Names = {"ChargeFish", "Cast", "Minigame", "Catch", "FishingComplet", "Complete"}
+    local Found = {}
+    for _, name in pairs(Names) do
+        local r = ReplicatedStorage:FindFirstChild(name, true)
+        if r then Found[name] = r end
+    end
+    return Found
 end
 
-local function SetupRemotes()
-    -- Mencari remotes dengan pola nama yang sering digunakan game Fish-It
-    Remotes.Charge = ReplicatedStorage:FindFirstChild("ChargeFish", true) or ReplicatedStorage:FindFirstChild("Cast", true)
-    Remotes.Minigame = ReplicatedStorage:FindFirstChild("Minigame", true) or ReplicatedStorage:FindFirstChild("Catch", true)
-    Remotes.Finish = ReplicatedStorage:FindFirstChild("FishingComplet", true) or ReplicatedStorage:FindFirstChild("Complete", true)
-    
-    return Remotes.Charge and Remotes.Minigame and Remotes.Finish
-end
-
--- [[ LOGIC UTAMA ]] --
 local function StartBot()
     task.spawn(function()
         while BotConfig.IsRunning do
-            if not SetupRemotes() then 
-                warn("Remotes tidak ditemukan! Pastikan kamu memegang alat pancing.")
-                task.wait(2)
-                continue 
-            end
+            local remotes = GetRemotes()
+            local charge = remotes.ChargeFish or remotes.Cast
+            local mini = remotes.Minigame or remotes.Catch
+            local finish = remotes.FishingComplet or remotes.Complete
 
-            -- 1. MELEMPAR
-            local Rod = GetRod()
-            if not Rod then
-                warn("Pegang alat pancingmu!")
+            if not charge or not mini then
+                StatusLabel.Text = "Error: Remotes Not Found!"
+                StatusLabel.TextColor3 = Color3.new(1,0,0)
                 task.wait(1)
                 continue
             end
 
-            -- Invoke lemparan (beberapa game butuh workspace.DistributedGameTime)
-            pcall(function() 
-                Remotes.Charge:InvokeServer(workspace.DistributedGameTime) 
-            end)
-            
-            -- 2. TUNGGU GIGITAN (Logic Deteksi)
-            task.wait(1.5) -- Jeda animasi lempar
-            
-            local Ticket = nil
-            local Attempt = 0
+            StatusLabel.Text = "Status: Casting..."
+            pcall(function() charge:InvokeServer(workspace.DistributedGameTime) end)
+            task.wait(BotConfig.WaitThrow)
+
+            StatusLabel.Text = "Status: Waiting for Fish..."
+            local ticket = nil
+            local start = tick()
             
             repeat
-                Attempt = Attempt + 1
-                local FakeTime = BotConfig.UseTimeSpoof and (os.time() - BotConfig.WaitGame) or os.time()
-                
-                -- Mencoba mendapatkan 'Ticket' dari minigame
-                local Success, Response = pcall(function()
-                    return Remotes.Minigame:InvokeServer(BotConfig.CastPower, math.random(1000, 9999), FakeTime)
+                local fakeTime = BotConfig.UseTimeSpoof and (os.time() - 3) or os.time()
+                local success, res = pcall(function() 
+                    return mini:InvokeServer(BotConfig.CastPower, math.random(1, 999), fakeTime) 
                 end)
-
-                if Success and Response then
-                    Ticket = Response
-                end
+                if success and res then ticket = res end
                 task.wait(0.5)
-            until Ticket or Attempt > 30 or not BotConfig.IsRunning
+            until ticket or not BotConfig.IsRunning or (tick() - start > 20)
 
-            -- 3. ANGKAT IKAN
-            if Ticket then
-                if not BotConfig.UseTimeSpoof then
-                    task.wait(BotConfig.WaitGame) -- Tunggu durasi minigame normal
-                else
-                    task.wait(0.2) -- Instan
-                end
-                
-                -- Kirim sinyal selesai
-                pcall(function() 
-                    Remotes.Finish:FireServer(Ticket) 
-                end)
+            if ticket then
+                StatusLabel.Text = "Status: Catching!"
+                task.wait(BotConfig.WaitGame)
+                pcall(function() finish:FireServer(ticket) end)
             end
 
             task.wait(BotConfig.WaitCool)
@@ -99,4 +130,16 @@ local function StartBot()
     end)
 end
 
--- Masukkan fungsi StartBot() ke dalam Button Click UI kamu.
+-- Button Event
+ToggleBtn.MouseButton1Click:Connect(function()
+    BotConfig.IsRunning = not BotConfig.IsRunning
+    if BotConfig.IsRunning then
+        ToggleBtn.Text = "STOP BOT"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+        StartBot()
+    else
+        ToggleBtn.Text = "START BOT"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+        StatusLabel.Text = "Status: Stopped"
+    end
+end)
